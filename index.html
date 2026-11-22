@@ -63,7 +63,7 @@
     <a class="card topic" href="security.html">
       <span class="status">已上線</span>
       <h3>Wi-Fi Security · WPA3</h3>
-      <p>WPA3-Personal 與 SAE：連線序列、Commit / Confirm 與金鑰推導、H2E、狀態機、部署模式、Transition Disable、SAE-PK 與 Wi-Fi 6E / 7 / 8 的安全限制。</p>
+      <p>WPA3-Personal 與 SAE：連線序列、Commit / Confirm 與金鑰推導、H2E、狀態機、部署模式、Transition Disable、SAE-PK、Enhanced Open（OWE）與 Wi-Fi 6E / 7 / 8 的安全限制。</p>
       <span class="go">進入 Security →</span>
     </a>
     <div class="card topic soon">
@@ -119,6 +119,7 @@
         <li><a href="security.html#modes">WPA3-Personal 模式</a></li>
         <li><a href="security.html#trdisable">Transition Disable</a></li>
         <li><a href="security.html#saepk">SAE-PK</a></li>
+        <li><a href="security.html#owe">Enhanced Open（OWE）</a></li>
         <li><a href="security.html#gen">頻段與世代限制</a></li>
         <li><a href="security.html#impl">實作要點與已知攻擊</a></li>
       </ol></div>
@@ -133,6 +134,12 @@
   <h2><span class="num">3</span>更新日誌</h2>
   <div class="timeline log">
     <div class="ev now"><div class="d">2026-11-22</div>
+      <div class="t">Security 分頁新增 Enhanced Open（OWE）</div>
+      <ul>
+        <li>依 IEEE 802.11-2024 §12.14 整理 OWE：連線序列圖、DH Parameter element、PMK / PMKID 推導、與 Open / SAE 的比較。</li>
+        <li>Enhanced Open Transition Mode（Open BSS + 隱藏 OWE BSS）、Transition Disable bit 3，以及 6 GHz、EHT / MLO、Wi-Fi 8 的要求。</li>
+      </ul></div>
+    <div class="ev done"><div class="d">2026-11-22</div>
       <div class="t">新增 Wi-Fi Security 分頁（WPA3-Personal / SAE）</div>
       <ul>
         <li>依 IEEE 802.11-2024 §12.4 與 Wi-Fi Alliance WPA3 Specification v4.0 整理 SAE：連線序列圖、Commit / Confirm、H2E、金鑰推導、狀態機、anti-clogging。</li>
@@ -176,7 +183,7 @@
   <h2><span class="num">4</span>關於與資料來源</h2>
   <div class="card">
     <ul>
-      <li>WPA3 / SAE 內容整理自 IEEE 802.11-2024 §12.4 與 Wi-Fi Alliance WPA3 Specification v4.0（WFA 文件，不含於本 repo）。</li>
+      <li>WPA3 / SAE / OWE 內容整理自 IEEE 802.11-2024 §12.4、§12.14 與 Wi-Fi Alliance WPA3 Specification v4.0（WFA 文件，不含於本 repo）。</li>
       <li>802.11be、802.11bf 內容整理自 IEEE 802.11be-2024、802.11bf-2025 與 802.11-2024 原文；頁碼規則：PDF 頁 = 印刷頁 + 1。</li>
       <li>802.11bn 仍在 Draft 階段，內容整理自公開資訊與產業資料，細節會隨 Draft 變動。</li>
       <li>本站為學習輔助，涉及設計決策時請以官方標準與 Wi-Fi Alliance 認證規範為準。</li>

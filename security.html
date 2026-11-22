@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Wi-Fi Security 導讀</title>
-<meta name="description" content="Wi-Fi 安全導讀：WPA3-Personal 與 SAE（Simultaneous Authentication of Equals）的訊框流程、金鑰推導、狀態機、模式與世代限制">
+<meta name="description" content="Wi-Fi 安全導讀：WPA3-Personal（SAE）與 Enhanced Open（OWE）（Simultaneous Authentication of Equals）的訊框流程、金鑰推導、狀態機、模式與世代限制">
 <script>(function(){var t=null;try{t=new URLSearchParams(location.search).get("theme")}catch(e){}if(t!=="dark"&&t!=="light"){try{t=localStorage.getItem("wifi8-theme")}catch(e){}}if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t)})();</script>
 <link rel="stylesheet" href="assets/site.css">
 </head>
@@ -13,7 +13,7 @@
 <nav class="toc" id="toc">
   <div class="sitenav"><a href="index.html">首頁</a><a href="wifi8.html">Wi-Fi 8</a><a href="wifi7.html">Wi-Fi 7</a><a href="wifi-sensing.html">Wi-Fi Sensing</a><a href="security.html" class="cur" aria-current="page">Security</a><a href="compare.html">6/7/8 比較</a></div>
   <div class="brand">Wi-Fi Security</div>
-  <div class="sub">WPA3 / SAE 導讀</div>
+  <div class="sub">WPA3 / SAE / OWE 導讀</div>
   <button class="menu-btn" id="menuBtn" aria-expanded="false">目錄</button>
   <ol>
     <li><a href="#overview">1. 總覽</a></li>
@@ -25,21 +25,22 @@
     <li><a href="#modes">7. WPA3-Personal 模式</a></li>
     <li><a href="#trdisable">8. Transition Disable</a></li>
     <li><a href="#saepk">9. SAE-PK</a></li>
-    <li><a href="#gen">10. 頻段與世代限制</a></li>
-    <li><a href="#impl">11. 實作要點</a></li>
-    <li><a href="#glossary">12. 名詞表</a></li>
-    <li><a href="#refs">13. 參考資料</a></li>
+    <li><a href="#owe">10. Enhanced Open（OWE）</a></li>
+    <li><a href="#gen">11. 頻段與世代限制</a></li>
+    <li><a href="#impl">12. 實作要點</a></li>
+    <li><a href="#glossary">13. 名詞表</a></li>
+    <li><a href="#refs">14. 參考資料</a></li>
   </ol>
   <button class="theme-btn" id="themeBtn">切換深 / 淺色</button>
 </nav>
 
 <main>
 <header class="hero">
-  <h1>Wi-Fi Security<br>WPA3-Personal 與 SAE</h1>
+  <h1>Wi-Fi Security<br>WPA3-Personal（SAE）與 Enhanced Open（OWE）</h1>
   <p class="lead">WPA3-Personal 用 <b>SAE（Simultaneous Authentication of Equals）</b>取代 WPA2 的 PSK：密碼不再直接衍生 PMK，而是透過一次以橢圓曲線為基礎的密碼認證金鑰交換（PAKE）得到每次連線都不同的 PMK。本頁依 <b>IEEE 802.11-2024 §12.4</b> 與 <b>Wi-Fi Alliance WPA3 Specification v4.0</b> 整理 SAE 的訊框、金鑰推導、狀態機，以及 WPA3 在 Wi-Fi 6E / 7 / 8 上的限制。</p>
   <div class="chips">
     <span class="chip">IEEE 802.11-2024 §12.4</span><span class="chip">WPA3 Spec v4.0（2026-10）</span>
-    <span class="chip">SAE / H2E / SAE-PK</span><span class="chip">AKM 8 · 9 · 24 · 25</span><span class="chip">首批主題：WPA3-Personal</span>
+    <span class="chip">SAE / H2E / SAE-PK</span><span class="chip">AKM 8 · 9 · 24 · 25</span><span class="chip">OWE / Enhanced Open</span>
   </div>
   <div class="tip"><b>閱讀建議：</b>先看 3 的序列圖掌握「SAE → Association → 4-way handshake」的全貌，再依需求讀 4（演算法）、5（狀態機與重傳）、7–8（部署模式與降級防護）。頁碼標示為 PDF 頁（802.11-2024：PDF 頁 = 印刷頁 + 1；WPA3 Spec 為文件頁碼）。</div>
 </header>
@@ -47,7 +48,7 @@
 <!-- 1 -->
 <section id="overview">
   <h2><span class="num">1</span>總覽</h2>
-  <p class="intro">WPA3 是 Wi-Fi Alliance 的認證計畫，底層機制來自 IEEE 802.11。WPA3 Spec v4.0 定義三個家族：<b>WPA3-Personal</b>（密碼，SAE）、<b>WPA3-Enterprise</b>（802.1X / EAP，含 192-bit 模式）、<b>Wi-Fi Enhanced Open</b>（OWE，無密碼但加密）。本頁先處理 WPA3-Personal。</p>
+  <p class="intro">WPA3 是 Wi-Fi Alliance 的認證計畫，底層機制來自 IEEE 802.11。WPA3 Spec v4.0 定義三個家族：<b>WPA3-Personal</b>（密碼，SAE）、<b>WPA3-Enterprise</b>（802.1X / EAP，含 192-bit 模式）、<b>Wi-Fi Enhanced Open</b>（OWE，無密碼但加密）。本頁目前涵蓋 WPA3-Personal（1–9）與 Enhanced Open（<a href="#owe">10</a>）。</p>
   <div class="grid g4">
     <div class="card kpi"><div class="v">4</div><div class="l">個 Authentication frame 完成 SAE（雙方各一個 Commit、一個 Confirm）</div></div>
     <div class="card kpi"><div class="v">19</div><div class="l">號群組（P-256）為必須實作；只允許群組 15–21</div></div>
@@ -447,8 +448,145 @@
 </section>
 
 <!-- 10 -->
+<section id="owe">
+  <h2><span class="num">10</span>Wi-Fi Enhanced Open（OWE）</h2>
+  <p class="intro">咖啡廳、機場的開放網路傳統上完全不加密，同一個熱點的任何人都能側錄別人的流量。<b>OWE（Opportunistic Wireless Encryption）</b>在 association 時順便做一次未認證的 Diffie-Hellman 交換，讓每個 STA 都有自己的金鑰。使用者體驗和開放網路一樣，不需要輸入密碼。Wi-Fi Alliance 的認證名稱是 <b>Wi-Fi CERTIFIED Enhanced Open</b>，底層定義在 802.11-2024 §12.14（PDF p.3128–3130），源自 IETF RFC 8110。</p>
+  <div class="grid g3">
+    <div class="card"><b>做到的事</b><br>防止<b>被動竊聽</b>：每個 STA 的 PMK 都來自獨立的 DH 交換，旁觀者無法解密，連上同一熱點的其他人也不行。</div>
+    <div class="card"><b>做不到的事</b><br><b>沒有認證</b>：STA 無法確認 AP 是真的，假 AP 可以完整扮演中間人。存取控制要靠其他機制（例如 captive portal）。</div>
+    <div class="card"><b>代價</b><br>只在 association 中多一個 DH element，沒有額外的認證交換；STA 與 AP 各做一次純量乘法與一次共同秘密運算。</div>
+  </div>
+
+  <h3>10.1 連線流程</h3>
+  <figure>
+    <svg viewBox="0 0 760 400" role="img" aria-label="OWE 連線序列圖：Open System 認證、帶 DH 公鑰的關聯、4-way handshake">
+      <defs><marker id="ow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--muted)"/></marker></defs>
+      <g font-size="12">
+        <rect x="0" y="56" width="760" height="52" fill="var(--code)" opacity=".55"/>
+        <rect x="0" y="114" width="760" height="74" fill="var(--code)" opacity=".35"/>
+        <rect x="0" y="194" width="760" height="120" fill="var(--accent-soft)" opacity=".7"/>
+        <rect x="0" y="320" width="760" height="76" fill="var(--warn-soft)" opacity=".9"/>
+        <text x="6" y="74" font-weight="700" class="muted">① 探索</text>
+        <text x="6" y="132" font-weight="700" class="muted">② Open</text>
+        <text x="6" y="148" class="muted" font-size="11">System 認證</text>
+        <text x="6" y="212" font-weight="700" style="fill:var(--accent)">③ 關聯</text>
+        <text x="6" y="228" class="muted" font-size="11">＝ DH 交換</text>
+        <text x="6" y="338" font-weight="700" style="fill:var(--warn)">④ 4-way</text>
+        <rect x="90" y="8" width="120" height="40" rx="8" fill="var(--c3)"/><text x="150" y="33" text-anchor="middle" style="fill:#fff" font-weight="700">STA</text>
+        <rect x="550" y="8" width="120" height="40" rx="8" fill="var(--c1)"/><text x="610" y="33" text-anchor="middle" style="fill:#fff" font-weight="700">AP</text>
+        <g stroke="var(--line)" stroke-width="1.5"><line x1="150" y1="48" x2="150" y2="396"/><line x1="610" y1="48" x2="610" y2="396"/></g>
+        <line x1="608" y1="92" x2="152" y2="92" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ow)"/>
+        <text x="380" y="86" text-anchor="middle">Beacon / Probe Resp：RSNE AKM <tspan font-weight="700">00-0F-AC:18</tspan>、MFPC/MFPR</text>
+        <line x1="152" y1="140" x2="608" y2="140" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ow)"/>
+        <text x="380" y="134" text-anchor="middle">Authentication（Open System, Seq=1）</text>
+        <line x1="608" y1="172" x2="152" y2="172" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ow)"/>
+        <text x="380" y="166" text-anchor="middle">Authentication（Seq=2, Status=0）</text>
+        <line x1="152" y1="226" x2="608" y2="226" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ow)"/>
+        <text x="380" y="220" text-anchor="middle" font-weight="700">(Re)Association Request</text>
+        <text x="380" y="242" text-anchor="middle" class="muted" font-size="11">RSNE（AKM 18 [+ PMKID]）+ DH Parameter element：Group 19、STA 公鑰 C = m·G</text>
+        <text x="630" y="262" font-size="11" class="muted">驗證 C、選 n</text>
+        <text x="630" y="276" font-size="11" class="muted">算 PMK、PMKID</text>
+        <line x1="608" y1="290" x2="152" y2="290" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ow)"/>
+        <text x="380" y="284" text-anchor="middle" font-weight="700">(Re)Association Response</text>
+        <text x="380" y="306" text-anchor="middle" class="muted" font-size="11">DH Parameter element：相同 Group、AP 公鑰 A = n·G → STA 驗證後算出同一個 PMK</text>
+        <line x1="608" y1="346" x2="152" y2="346" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ow)"/>
+        <text x="380" y="340" text-anchor="middle">M1 … M4：與 WPA2 / WPA3 相同，由 PMK 推出 PTK、下發 GTK / IGTK</text>
+        <line x1="152" y1="380" x2="608" y2="380" stroke="var(--c3)" stroke-width="4" opacity=".7"/>
+        <text x="380" y="374" text-anchor="middle" style="fill:var(--c3)" font-weight="700">加密資料（CCMP / GCMP）</text>
+      </g>
+    </svg>
+    <figcaption>圖 4：OWE 連線序列。認證階段仍是 Open System，DH 公鑰放在 (Re)Association Request / Response 的 Diffie-Hellman Parameter element（9.4.2.312）中交換。</figcaption>
+  </figure>
+
+  <h3>10.2 金鑰推導（§12.14.2）</h3>
+  <ol>
+    <li><b>STA：</b>選一個群組，隨機產生私鑰 m（1 &lt; m &lt; r），算公鑰 <code>C = m · G</code>，放進 DH Parameter element（Group + Public Key）。想用 PMKSA caching 時，同時在 RSNE 帶 PMKID。</li>
+    <li><b>AP：</b>若 PMKID 對得到快取的 PMKSA，就忽略 DH 參數，直接進 4-way handshake。否則檢查群組（不接受就以 <code>UNSUPPORTED_FINITE_CYCLIC_GROUP</code> 拒絕 association），並用 SAE 的 element 驗證規則檢查 C（失敗以 <code>REQUEST_DECLINED</code> 拒絕）。</li>
+    <li><b>AP：</b>產生私鑰 n、公鑰 <code>A = n · G</code>，計算：
+      <ul>
+        <li><code>S = n · C</code>、<code>s = F(S)</code>（取 x 座標）</li>
+        <li><code>prk = HKDF-Extract(C ‖ A ‖ group, s)</code></li>
+        <li><code>PMK = HKDF-Expand(prk, "OWE Key Generation", 雜湊長度)</code></li>
+        <li><code>PMKID = Truncate-128(Hash(C ‖ A))</code></li>
+      </ul>
+      雜湊依群組選擇（Table 12-1）：19 → SHA-256、20 → SHA-384、21 → SHA-512。S、s 用完立即刪除。</li>
+    <li><b>STA：</b>確認回應中的 Group 與自己送出的相同、驗證 A，再以 <code>S = m · A</code> 算出同一組 PMK / PMKID。</li>
+  </ol>
+  <div class="tip"><b>群組協商：</b>AP 拒絕群組時，STA 可以換一個群組重新 association。WFA 的 OWE 規範要求群組 19（P-256）必須支援，20、21 為選用。與 SAE 不同，OWE 的群組選擇沒有像 Rejected Groups 那樣的降級保護，但因為本來就不認證，影響有限。</div>
+
+  <h3>10.3 OWE vs Open vs SAE</h3>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>項目</th><th>Open（傳統開放）</th><th>OWE（Enhanced Open）</th><th>SAE（WPA3-Personal）</th></tr></thead>
+    <tbody>
+      <tr><td>使用者輸入</td><td>無</td><td>無</td><td>密碼</td></tr>
+      <tr><td>空中加密</td><td>無</td><td class="hl">有，每個 STA 的金鑰都不同</td><td>有，每個 STA 的金鑰都不同</td></tr>
+      <tr><td>認證 AP / STA</td><td>無</td><td>無</td><td>雙方都要證明知道密碼</td></tr>
+      <tr><td>DH 交換的位置</td><td>—</td><td>(Re)Association frame</td><td>Authentication frame（Commit）</td></tr>
+      <tr><td>前向保密</td><td>—</td><td>有（臨時 DH 金鑰）</td><td>有</td></tr>
+      <tr><td>防假 AP</td><td>否</td><td>否</td><td>僅對不知道密碼的攻擊者有效；完整防護需 SAE-PK</td></tr>
+      <tr><td>PMF</td><td>無</td><td>要求（WFA Enhanced Open）</td><td>要求</td></tr>
+      <tr><td>AKM</td><td>—</td><td><code>00-0F-AC:18</code>；Wi-Fi 8 為 profile #0（unauthenticated EPPKE）、#8（OWE）</td><td><code>:8</code> / <code>:24</code> 等</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>10.4 Transition Mode：讓舊裝置也連得上</h3>
+  <p>舊 STA 看不懂 AKM 18，不能連 OWE BSS。<b>Enhanced Open Transition Mode</b> 的做法是同時架<b>兩個 BSS</b>（WPA3 Spec §4.3，細節定義在 WFA OWE Specification §2.2）：</p>
+  <figure>
+    <svg viewBox="0 0 760 230" role="img" aria-label="OWE Transition Mode：一個公開的 Open BSS 與一個隱藏的 OWE BSS 互相指向">
+      <defs><marker id="ot" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--muted)"/></marker></defs>
+      <g font-size="12" text-anchor="middle">
+        <rect x="140" y="14" width="200" height="86" rx="10" fill="var(--panel)" stroke="var(--c2)" stroke-width="1.8"/>
+        <text x="240" y="36" font-weight="700">Open BSS</text>
+        <text x="240" y="56" class="muted" font-size="11">SSID「Cafe」（公開）、不加密</text>
+        <text x="240" y="74" class="muted" font-size="11">OWE Transition Mode element</text>
+        <text x="240" y="90" class="muted" font-size="11">→ BSSID-2、SSID「Cafe-owe」</text>
+        <rect x="420" y="14" width="200" height="86" rx="10" fill="var(--accent-soft)" stroke="var(--c1)" stroke-width="1.8"/>
+        <text x="520" y="36" font-weight="700">OWE BSS</text>
+        <text x="520" y="56" class="muted" font-size="11">Beacon 中 SSID 隱藏、AKM 18</text>
+        <text x="520" y="74" class="muted" font-size="11">OWE Transition Mode element</text>
+        <text x="520" y="90" class="muted" font-size="11">→ BSSID-1、SSID「Cafe」</text>
+        <path d="M340 50 H416" stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#ot)"/>
+        <path d="M420 66 H344" stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#ot)"/>
+        <circle cx="160" cy="180" r="22" fill="none" stroke="var(--c2)" stroke-width="2"/><text x="160" y="184" font-size="11">舊 STA</text>
+        <circle cx="600" cy="180" r="22" fill="none" stroke="var(--c3)" stroke-width="2"/><text x="600" y="184" font-size="11">OWE STA</text>
+        <path d="M172 160 L222 104" stroke="var(--c2)" stroke-width="2" marker-end="url(#ot)"/>
+        <text x="110" y="132" font-size="11" style="fill:var(--c2)">看到「Cafe」→ 以 Open 連線</text>
+        <path d="M584 162 Q 400 150 262 104" stroke="var(--c3)" stroke-width="1.6" fill="none" stroke-dasharray="5 4" marker-end="url(#ot)"/>
+        <path d="M596 158 L536 104" stroke="var(--c3)" stroke-width="2" marker-end="url(#ot)"/>
+        <text x="380" y="176" font-size="11" style="fill:var(--c3)">① 掃到 Open BSS 並讀取 element</text>
+        <text x="660" y="132" font-size="11" style="fill:var(--c3)">② 改連隱藏的 OWE BSS</text>
+        <text x="380" y="220" class="muted" font-size="11">使用者只看到一個網路名稱「Cafe」；支援 OWE 的裝置自動改用加密連線</text>
+      </g>
+    </svg>
+    <figcaption>圖 5：Enhanced Open Transition Mode。兩個 BSS 以 OWE Transition Mode element（WFA vendor-specific element）互相指向對方的 BSSID 與 SSID。</figcaption>
+  </figure>
+  <ul>
+    <li>OWE STA 在 Transition Mode 下會優先連 OWE BSS。只有在 AP 沒有提供 OWE 時，才退回傳統 Open（STA 的 Network Profile 處於 Transition 模式）。</li>
+    <li>降級風險：攻擊者可以架一個沒有 Transition element 的 Open BSS。收到 <a href="#trdisable">Transition Disable</a> bit 3 的 STA <b>可以</b>（非必須）停用不加密的 Open。WPA3 Spec 特別提醒：由於 OWE 連線本身未經認證，攻擊者也可能利用這個機制讓 STA 連不上真正的 Open 網路（DoS）。</li>
+    <li><b>不允許 Transition Mode 的情境：</b>6 GHz、Sub-1 GHz，以及啟用 EHT / MLO 的 BSS（WPA3 Spec §4.3、§12）。這些情境下不加密的 Open 也被禁止，「開放網路」只剩 OWE 一種選擇。</li>
+  </ul>
+
+  <h3>10.5 WPA3 Spec 對 Enhanced Open 的要求（§4、§5.4.3、§12）</h3>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>情境</th><th>AP</th><th>STA</th></tr></thead>
+    <tbody>
+      <tr><td>Enhanced Open Only</td><td>依 WFA OWE Spec §2.1；只開 OWE BSS，不提供傳統 Open</td><td>只用 OWE 連線，不退回不加密的 Open</td></tr>
+      <tr><td>EHT / MLO</td><td>pairwise 必須開 GCMP-256；不得開傳統 Open 與 Transition Mode</td><td>Network Profile 必須允許 GCMP-256；EHT / MLO 關聯不得使用不加密的 Open</td></tr>
+      <tr><td>UHR（Wi-Fi 8）</td><td>必須開 security profile #0（unauthenticated EPPKE，無 base AKM）</td><td>必須允許 profile #0；選擇順序：#0 優先，其次 #8（OWE :18）</td></tr>
+      <tr><td>6 GHz</td><td>不得開 Transition Mode；PMF Required</td><td>802.11-2024 §12.12.2（PDF p.3116–3117）：在 6 GHz 連線到不需認證的基礎架構 BSS 時必須使用 OWE，以取代不加密的 Open System</td></tr>
+      <tr><td>QR code</td><td colspan="2">WIFI URI 省略 <code>T:</code> 欄位即代表未認證網路（Open 或 Enhanced Open），例如 <code>WIFI:S:MyNet;;</code>；支援 OWE 的 STA 會以 Enhanced Open Transition 模式設定 profile（WPA3 Spec §8）</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="note"><b>資料來源說明：</b>OWE 的金鑰推導與訊框依 802.11-2024 §12.14 原文整理。Transition Mode element 的欄位格式，以及「群組 19 必須支援」、「PMF Required」等認證要求，出自 WFA <i>Opportunistic Wireless Encryption Specification</i>（WPA3 Spec 的參考文件 [16]）。本機沒有這份原文，這幾點是依公開資料整理，實作前請對照原文確認。</div>
+</section>
+
+<!-- 11 -->
 <section id="gen">
-  <h2><span class="num">10</span>頻段與世代限制</h2>
+  <h2><span class="num">11</span>頻段與世代限制</h2>
   <p class="intro">新頻段與新世代沒有舊裝置包袱，所以 WPA3 Spec §12 直接禁止舊演算法。</p>
   <div class="tbl-wrap">
   <table>
@@ -482,9 +620,9 @@
   </ul>
 </section>
 
-<!-- 11 -->
+<!-- 12 -->
 <section id="impl">
-  <h2><span class="num">11</span>實作要點與已知攻擊</h2>
+  <h2><span class="num">12</span>實作要點與已知攻擊</h2>
   <p class="intro">SAE 的數學是安全的，歷年問題多半出在實作與部署。2019 年公開的 <b>Dragonblood</b>（Vanhoef &amp; Ronen）是整理這些問題的最佳起點，後續 802.11 與 WPA3 的許多規定都是它的對策。</p>
   <div class="tbl-wrap">
   <table>
@@ -521,9 +659,9 @@
   </div>
 </section>
 
-<!-- 12 -->
+<!-- 13 -->
 <section id="glossary">
-  <h2><span class="num">12</span>名詞表</h2>
+  <h2><span class="num">13</span>名詞表</h2>
   <input class="search" id="gq" type="search" placeholder="搜尋名詞，例如 PWE、H2E、PMKID…" aria-label="搜尋名詞">
   <dl class="gloss" id="gloss">
     <div><dt>SAE</dt><dd>Simultaneous Authentication of Equals，基於 Dragonfly 的密碼認證金鑰交換，雙方地位對等。</dd></div>
@@ -544,20 +682,25 @@
     <div><dt>Anti-Clogging Token</dt><dd>AP 忙碌時要求 STA 回帶的無狀態 token，證明 STA 真的在該 MAC 上。</dd></div>
     <div><dt>Transition Disable</dt><dd>AP 在 M3 以 KDE 通知 STA 永久停用某些舊演算法，防止降級。</dd></div>
     <div><dt>SAE-PK</dt><dd>SAE Public Key：密碼即 AP 公鑰指紋，AP 以簽章證明身分，防 evil twin。</dd></div>
+    <div><dt>OWE</dt><dd>Opportunistic Wireless Encryption（AKM 18），在 association 時做未認證的 DH 交換，讓開放網路也能加密；WFA 認證名稱為 Enhanced Open。</dd></div>
+    <div><dt>DH Parameter element</dt><dd>Diffie-Hellman Parameter element（9.4.2.312），OWE 在 (Re)Association frame 中攜帶 Group 與公鑰。</dd></div>
+    <div><dt>OWE Transition Mode</dt><dd>公開的 Open BSS 與隱藏的 OWE BSS 以 vendor-specific element 互相指向，讓舊 STA 與 OWE STA 共用同一個網路名稱。</dd></div>
     <div><dt>EPPKE</dt><dd>Enhanced Privacy Protection Key Exchange（802.11bi），Wi-Fi 8 的 security profile 使用。</dd></div>
     <div><dt>Security Profile</dt><dd>Wi-Fi 8 以編號 profile 打包安全參數的機制，UHR 關聯一律使用。</dd></div>
     <div><dt>OCV</dt><dd>Operating Channel Validation，在金鑰交換中確認雙方所在通道，防通道型中間人攻擊。</dd></div>
   </dl>
 </section>
 
-<!-- 13 -->
+<!-- 14 -->
 <section id="refs">
-  <h2><span class="num">13</span>參考資料</h2>
+  <h2><span class="num">14</span>參考資料</h2>
   <div class="grid g2">
     <div class="card"><b>一手來源</b>
       <ul>
         <li>IEEE 802.11-2024 §12.4「Authentication using a password」（<code>80211-2024.pdf</code>，PDF p.2961–2986）；SAE 測試向量見 Annex J.10（PDF p.5812–5816）</li>
         <li>Wi-Fi Alliance, <i>WPA3 Specification</i> v4.0（2026-10-21）：§1.4、§2、§5、§7、§9、§11、§12、§15、§16、附錄 B</li>
+        <li>IEEE 802.11-2024 §12.14「Opportunistic Wireless Encryption」（PDF p.3128–3130）、§4.10.3.7（PDF p.422）、9.4.2.312 DH Parameter element（PDF p.1578）</li>
+        <li><a href="https://datatracker.ietf.org/doc/html/rfc8110" target="_blank" rel="noopener">IETF RFC 8110：Opportunistic Wireless Encryption</a></li>
         <li><a href="https://datatracker.ietf.org/doc/html/rfc7664" target="_blank" rel="noopener">IETF RFC 7664：Dragonfly Key Exchange</a></li>
         <li><a href="https://datatracker.ietf.org/doc/html/rfc8265" target="_blank" rel="noopener">IETF RFC 8265：PRECIS（密碼字串正規化）</a></li>
       </ul></div>
@@ -572,7 +715,7 @@
 </section>
 
 <footer>
-  整理自 IEEE 802.11-2024 與 Wi-Fi Alliance WPA3 Specification v4.0，學習輔助用；條文細節與數值請以原文為準。最後更新：2026-11-22。
+  整理自 IEEE 802.11-2024（§12.4 SAE、§12.14 OWE）與 Wi-Fi Alliance WPA3 Specification v4.0，學習輔助用；條文細節與數值請以原文為準。最後更新：2026-11-22。
 </footer>
 </main>
 </div>
