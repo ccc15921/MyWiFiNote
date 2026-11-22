@@ -209,7 +209,104 @@
     <figcaption>圖 2：SAE 金鑰推導鏈。上排是 Commit 前各自完成的運算；下排是收到對方 Commit 之後的運算（由右往左）。</figcaption>
   </figure>
 
-  <h3>4.2 產生密碼元素 PWE：Hunting-and-Pecking vs Hash-to-Element</h3>
+  <h3 id="group">4.2 Finite Cyclic Group 與 Scalar / Element：SAE 的數學基礎</h3>
+  <p>SAE 是一種「用密碼當基底的 Diffie-Hellman」。要理解 Commit 裡的 <b>Group</b>、<b>Scalar</b>、<b>Element</b> 三個欄位，先要知道它們分別代表什麼（§12.4.4，PDF p.2963–2970）。</p>
+
+  <h4 style="margin:18px 0 6px">(1) Finite Cyclic Group：雙方共用的「數學空間」</h4>
+  <p>有限循環群是一組有限個<b>元素（element）</b>加上一種運算。從生成元 G 出發，反覆做這個運算可以走遍群中所有元素，走 r 步後回到起點，r 稱為群的<b>階（order）</b>。SAE 只會用到三種運算：</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>802.11 的名稱</th><th>意義</th><th>ECC 群組（橢圓曲線）</th><th>FFC 群組（有限體 / MODP）</th></tr></thead>
+    <tbody>
+      <tr><td><code>elem-op(X, Y)</code></td><td>兩個元素 → 一個元素</td><td>點加法 X + Y</td><td>模乘法 X·Y mod p</td></tr>
+      <tr><td><code>scalar-op(x, Y)</code></td><td>整數 × 元素 → 元素（elem-op 重複 x 次）</td><td>純量乘法 x·Y</td><td>模指數 Y<sup>x</sup> mod p</td></tr>
+      <tr><td><code>inverse-op(X)</code></td><td>反元素，與 X 運算後得到單位元素</td><td>−X（y 座標取負），X + (−X) = 無窮遠點</td><td>模反元素 X<sup>−1</sup> mod p</td></tr>
+      <tr><td>單位元素</td><td>「什麼都沒做」的元素</td><td>無窮遠點</td><td>1</td></tr>
+      <tr><td>F(元素)</td><td>把元素變成整數</td><td>取 x 座標</td><td>元素本身</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>安全性來自<b>離散對數問題</b>：已知 Y 與 <code>x·Y</code>，在夠大的群中實際上算不出 x。因此「純量」可以安全地藏在「元素」裡送出。</p>
+  <p><b>Group 欄位</b>（Finite Cyclic Group field，2 octets）填的是 IANA「Group Description」登錄編號（源自 IKE，RFC 2409），一個編號就對應一整組公開的參數：ECC 為 (p, a, b, G, r, h)，FFC 為 (p, G, r)。雙方不需要傳送曲線參數，只要傳編號。</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Group</th><th>類型</th><th>強度估計</th><th>Scalar 長度</th><th>Element 長度</th><th>Commit 固定欄位總長</th><th>H2E 雜湊</th></tr></thead>
+    <tbody>
+      <tr><td><b>19</b></td><td>ECC P-256（必須支援）</td><td>128</td><td>32 B</td><td>64 B（x‖y）</td><td>104 B</td><td>SHA-256</td></tr>
+      <tr><td>20</td><td>ECC P-384</td><td>192</td><td>48 B</td><td>96 B</td><td>152 B</td><td>SHA-384</td></tr>
+      <tr><td>21</td><td>ECC P-521</td><td>256</td><td>66 B</td><td>132 B</td><td>206 B</td><td>SHA-512</td></tr>
+      <tr><td>15</td><td>MODP 3072-bit</td><td>128</td><td>384 B</td><td>384 B</td><td>776 B</td><td>SHA-384</td></tr>
+      <tr><td>16 / 17 / 18</td><td>MODP 4096 / 6144 / 8192-bit</td><td>152 / 176 / 200</td><td>512 / 768 / 1024 B</td><td>同 scalar 長度</td><td>—</td><td>SHA-512</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p style="font-size:.9rem;color:var(--muted)">長度規則（§12.4.7.2）：scalar 編成最短的 m octets，使 2<sup>8m</sup> &gt; r；ECC element 為 x、y 各編成與 p 同長後串接；FFC element 為一個與 p 同長的整數。Commit 固定欄位 = Algorithm 2 + Seq 2 + Status 2 + Group 2 + Scalar + Element。H2E 雜湊依 Table 12-1；Hunting-and-Pecking 一律使用 SHA-256。MODP 群組以 safe prime 定義，r = (p−1)/2。強度估計引自 WPA3 Spec 附錄 B。</p>
+  <div class="tip"><b>Group 的協商方式：</b>SAE 沒有獨立的協商訊框，Group 欄位本身就是提議。發起方依本地設定（<code>dot11RSNAConfigDLCGroupTable</code>）挑最偏好的群組送出 Commit。對方不支援時回 <b>Status 77</b>，發起方改用下一個群組重送；H2E 下被拒的群組會記入 Rejected Groups element，並納入 KDF 的 salt，防止有人偽造 77 迫使雙方降級。雙方同時發起且選了不同群組時，由 MAC 位址較大的一方決定。實務上幾乎所有設備都用 19。</div>
+
+  <h4 style="margin:18px 0 6px">(2) Scalar 與 Element：一個藏在數字裡，一個藏在群裡</h4>
+  <p>每一方先產生兩個一次性的秘密亂數 <code>rand</code> 與 <code>mask</code>，再送出：</p>
+  <div class="grid g2">
+    <div class="card feat"><span class="tag">整數</span><h4>Scalar = (rand + mask) mod r</h4>
+      <p>rand 被 mask「遮住」，因為 mask 是均勻亂數，旁觀者從 scalar 看不出 rand。長度與群的階 r 相同（P-256 為 32 bytes）。</p></div>
+    <div class="card feat"><span class="tag">群元素</span><h4>Element = inverse-op(mask · PWE)</h4>
+      <p>mask 被離散對數問題保護：知道 element 也推不出 mask。PWE 由密碼產生且不公開，所以旁觀者連「基底」是什麼都不知道。</p></div>
+  </div>
+  <p>收到對方的 scalar 與 element 後，把兩者組合起來，就能消去對方的 mask：</p>
+  <div class="card" style="font-family:'Cascadia Code',Consolas,monospace;font-size:.88rem;overflow-x:auto;white-space:nowrap">
+    peer-scalar · PWE + PEER-ELEMENT<br>
+    = (rand<sub>B</sub> + mask<sub>B</sub>) · PWE − mask<sub>B</sub> · PWE<br>
+    = <b>rand<sub>B</sub> · PWE</b>　　← 對方的 mask 被消掉了<br><br>
+    A 算：K = rand<sub>A</sub> · (rand<sub>B</sub> · PWE) = rand<sub>A</sub>·rand<sub>B</sub> · PWE<br>
+    B 算：K = rand<sub>B</sub> · (rand<sub>A</sub> · PWE) = rand<sub>A</sub>·rand<sub>B</sub> · PWE　　<b>← 兩邊相同</b>
+  </div>
+  <p>這就是以 PWE 為基底的 Diffie-Hellman：雙方各自貢獻一個秘密 rand，共同秘密 K = rand<sub>A</sub>·rand<sub>B</sub>·PWE。<b>只有用同一個密碼算出同一個 PWE 的兩方，才會得到相同的 K</b>。密碼錯了，K 就不同，後續 Confirm 會驗證失敗。</p>
+
+  <h4 style="margin:18px 0 6px">(3) 小數字範例（僅示意，實際群組大得多）</h4>
+  <p>用一個極小的 FFC 群：p = 23，生成元 2 的階 r = 11（2<sup>11</sup> ≡ 1 mod 23）。FFC 中 scalar-op 是次方、elem-op 是乘法、inverse-op 是模反元素。假設雙方由同一個密碼得到 <b>PWE = 8</b>。</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>步驟</th><th>STA-A</th><th>STA-B</th></tr></thead>
+    <tbody>
+      <tr><td>秘密亂數</td><td>rand = 5、mask = 3</td><td>rand = 7、mask = 2</td></tr>
+      <tr><td>Scalar = (rand + mask) mod 11</td><td>8</td><td>9</td></tr>
+      <tr><td>Element = (PWE<sup>mask</sup>)<sup>−1</sup> mod 23</td><td>8<sup>3</sup> = 6 → 6<sup>−1</sup> = <b>4</b></td><td>8<sup>2</sup> = 18 → 18<sup>−1</sup> = <b>9</b></td></tr>
+      <tr><td>送出 Commit</td><td>(Scalar 8, Element 4)</td><td>(Scalar 9, Element 9)</td></tr>
+      <tr><td>消去對方 mask：PWE<sup>peer-scalar</sup> · peer-element</td><td>8<sup>9</sup> · 9 = 9 · 9 = 81 ≡ <b>12</b>（= 8<sup>7</sup>）</td><td>8<sup>8</sup> · 4 = 4 · 4 = <b>16</b>（= 8<sup>5</sup>）</td></tr>
+      <tr><td>K = (上一列)<sup>rand</sup> mod 23</td><td>12<sup>5</sup> ≡ <b>18</b></td><td>16<sup>7</sup> ≡ <b>18</b></td></tr>
+      <tr><td>context = (scalar<sub>A</sub> + scalar<sub>B</sub>) mod r</td><td colspan="2">(8 + 9) mod 11 = 6　→ 用於 KDF，前 128 bits 為 PMKID</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>驗算：K = PWE<sup>rand<sub>A</sub>·rand<sub>B</sub></sup> = 8<sup>35 mod 11</sup> = 8<sup>2</sup> = 64 ≡ 18。若 B 用錯的密碼得到 PWE = 4，B 算出的 K 就不會是 18，Confirm 必定比對失敗。</p>
+
+  <h4 style="margin:18px 0 6px">(4) Scalar 與 Element 在後續步驟的用途</h4>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>用在哪裡</th><th>怎麼用</th><th>目的</th></tr></thead>
+    <tbody>
+      <tr><td>算共同秘密 K</td><td><code>K = rand · (peer-scalar · PWE + PEER-ELEMENT)</code></td><td>完成以密碼為基底的 DH</td></tr>
+      <tr><td>KDF 的 context</td><td><code>context = (scalar + peer-scalar) mod r</code></td><td>讓 PMK 綁定這一次交換；兩邊相加的結果相同，與誰先誰後無關</td></tr>
+      <tr><td>PMKID</td><td>context 的前 128 bits</td><td>雙方不需額外交換就得到相同的 PMK 識別碼（由公開值算出，不是秘密）</td></tr>
+      <tr><td>Confirm</td><td><code>CN(KCK, send-confirm, 己方 scalar, 己方 element, 對方 scalar, 對方 element)</code></td><td>綁定整份交換內容：任何一個值被竄改，Confirm 就對不上</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h4 style="margin:18px 0 6px">(5) 為什麼要驗證收到的 Scalar / Element（§12.4.5.4）</h4>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>檢查</th><th>不檢查會怎樣</th></tr></thead>
+    <tbody>
+      <tr><td>1 &lt; scalar &lt; r</td><td>scalar 為 0、1 或 ≥ r 時，K 的計算會退化成可預測的值，攻擊者不需密碼即可算出 K</td></tr>
+      <tr><td>Element 在曲線上、不是無窮遠點（FFC：1 &lt; E &lt; p−1 且 E<sup>r</sup> ≡ 1）</td><td><b>無效曲線 / 小子群攻擊</b>：送出不在正確群中的點，讓 K 落在極小的集合裡，進而推測 rand 或密碼</td></tr>
+      <tr><td>對方的 scalar / element 不得與自己送出的相同</td><td><b>反射攻擊</b>：攻擊者把你的 Commit 原封不動送回來，冒充知道密碼的對端</td></tr>
+      <tr><td>K 不得為單位元素</td><td>K 為單位元素時共同秘密是公開已知的值</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="note"><b>為什麼旁觀者無法離線猜密碼：</b>攻擊者錄下雙方的 (scalar, element) 後，想驗證一個猜測的密碼，就得用猜測的 PWE' 算出 K。但 K = rand<sub>A</sub>·rand<sub>B</sub>·PWE，算它需要其中一方的 rand，等於要解離散對數或 DH 問題。反過來看，任何一組 (scalar, element) 都可以對應到某個 PWE 與某組 (rand, mask)，錄下來的資料無法區分哪個密碼才對。攻擊者唯一的辦法是親自用一個猜測參與一次交換，每次只能試一個密碼。</div>
+
+  <h3>4.3 產生密碼元素 PWE：Hunting-and-Pecking vs Hash-to-Element</h3>
   <p>SAE 要先把密碼映射成群組中的一個秘密點 <b>PWE</b>（Password Element）。802.11 定義兩種方法：</p>
   <div class="tbl-wrap">
   <table>
@@ -226,7 +323,7 @@
   </table>
   </div>
 
-  <h3>4.3 Commit：每一方要做什麼</h3>
+  <h3>4.4 Commit：每一方要做什麼</h3>
   <ol>
     <li>產生兩個一次性亂數 <code>rand</code>、<code>mask</code>（1 &lt; 值 &lt; r，且 (rand+mask) mod r &gt; 1；不可在不同次交換重用）。</li>
     <li>計算 <code>commit-scalar = (rand + mask) mod r</code>、<code>COMMIT-ELEMENT = −(mask · PWE)</code>，之後 mask 可丟棄。</li>
@@ -235,11 +332,11 @@
         <li><b>AKM Suite Selector element</b>：要使用 AKM 24 / 25 時必須帶上，對方回應時須帶相同 AKM，否則認證失敗（防止 AKM 被竄改）。</li>
         <li><b>Password Identifier element</b>：同一 SSID 有多組密碼時，用來指定是哪一組。</li>
         <li><b>Rejected Groups element</b>：H2E 下，列出先前被對方拒絕的群組；這份清單會被納入 KDF 的 salt，<b>防止群組降級攻擊</b>。</li>
-        <li><b>Anti-Clogging Token</b>：對方要求時才附上（見 4.6）。</li>
+        <li><b>Anti-Clogging Token</b>：對方要求時才附上（見 4.7）。</li>
       </ul></li>
   </ol>
 
-  <h3>4.4 收到對方 Commit：驗證與算出 PMK</h3>
+  <h3>4.5 收到對方 Commit：驗證與算出 PMK</h3>
   <ol>
     <li><b>驗證 scalar</b>：必須 1 &lt; scalar &lt; r。<b>驗證 element</b>：座標在 [0, p) 且是曲線上的點、不是無窮遠點。若對方送來的 scalar 或 element 與自己送出的相同，也判失敗（防反射攻擊）。</li>
     <li>計算共同秘密：<code>K = rand · (peer-scalar · PWE + PEER-ELEMENT)</code>。K 若為單位元素則拒絕；否則取 <code>k = F(K)</code>（ECC 為 x 座標）。</li>
@@ -248,21 +345,21 @@
   </ol>
   <div class="tip"><b>為什麼離線字典攻擊行不通：</b>scalar / element 被 rand 與 mask 遮蔽，旁觀者看到的只是隨機的群組元素；要驗證一個密碼猜測，攻擊者必須用該猜測產生的 PWE 參與一次真實的交換，每次交換只能試一個密碼。</div>
 
-  <h3>4.5 Confirm：證明雙方算出同一把金鑰</h3>
+  <h3>4.6 Confirm：證明雙方算出同一把金鑰</h3>
   <ul>
     <li><code>confirm = CN(SAE-KCK, send-confirm, 己方 scalar, 己方 element, 對方 scalar, 對方 element)</code>，CN 是 HMAC 形式的雜湊。</li>
     <li>送出 Authentication frame（Seq = 2、Status = 0），內含 <b>Send-Confirm</b> 計數器（防重放，每次重送遞增）與 <b>Confirm</b> 欄位。</li>
     <li>收方以相反順序（對方的放前面）計算 verifier 比對；不符則以 Status 15（CHALLENGE_FAILURE）拒絕。雙方都驗證成功即完成認證，PMK 交給後續 Association 與 4-way handshake 使用。</li>
   </ul>
 
-  <h3>4.6 Anti-Clogging：防止 Commit 洪水</h3>
+  <h3>4.7 Anti-Clogging：防止 Commit 洪水</h3>
   <p>處理一個 Commit 需要數次橢圓曲線純量乘法，攻擊者可以偽造大量 MAC 送 Commit 把 AP 的 CPU 耗光。對策（§12.4.6，PDF p.2975–2976）：</p>
   <ul>
     <li>AP 的 SAE 父程序維護計數器 <b>Open</b>（處於 Committed / Confirmed 的協定實例數）。超過 <code>dot11RSNASAEAntiCloggingThreshold</code> 後，對每個新 Commit 不做運算，直接以 <b>Status 76</b> 回覆一個與來源 MAC 綁定的 token（例如 H(秘密, MAC)），AP 自己不需要保存狀態。</li>
     <li>STA 必須把 token 原封不動附在下一個 Commit 中重送，證明自己真的能在那個 MAC 位址收到訊框。H2E 下 token 包在 <b>Anti-Clogging Token Container element</b> 中。</li>
   </ul>
 
-  <h3>4.7 SAE 訊框與狀態碼速查</h3>
+  <h3>4.8 SAE 訊框與狀態碼速查</h3>
   <div class="tbl-wrap">
   <table>
     <thead><tr><th>訊息</th><th>Auth Seq</th><th>Status</th><th>主要內容</th></tr></thead>

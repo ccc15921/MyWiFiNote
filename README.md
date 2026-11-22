@@ -8,7 +8,7 @@ IEEE 802.11 各世代標準給系統設計工程師的繁體中文導讀與規�
 | `wifi8.html` | Wi-Fi 8（802.11bn, UHR）系統設計手冊 |
 | `wifi7.html` | Wi-Fi 7（802.11be, EHT）：MLO、TWT / R-TWT、規格速查 |
 | `wifi-sensing.html` | Wi-Fi Sensing（802.11bf）：導讀與規格速查 |
-| `security.html` | Wi-Fi Security：WPA3-Personal / SAE |
+| `security.html` | Wi-Fi Security：WPA3-Personal（SAE）與 Enhanced Open（OWE）導讀 |
 | `compare.html` | Wi-Fi 6 / 7 / 8 規格比較 |
 
 純靜態網站，無需建置；直接開啟 `index.html` 即可。規格速查資料以 `spec-be-data.js`、`spec-bf-data.js` 載入，可在 `file://` 運作。
