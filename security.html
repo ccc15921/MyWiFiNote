@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wi-Fi Security 導讀</title>
+<meta name="description" content="Wi-Fi 安全導讀：WPA3-Personal 與 SAE（Simultaneous Authentication of Equals）的訊框流程、金鑰推導、狀態機、模式與世代限制">
+<script>(function(){var t=null;try{t=new URLSearchParams(location.search).get("theme")}catch(e){}if(t!=="dark"&&t!=="light"){try{t=localStorage.getItem("wifi8-theme")}catch(e){}}if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t)})();</script>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<div class="layout">
+<nav class="toc" id="toc">
+  <div class="sitenav"><a href="index.html">首頁</a><a href="wifi8.html">Wi-Fi 8</a><a href="wifi7.html">Wi-Fi 7</a><a href="wifi-sensing.html">Wi-Fi Sensing</a><a href="security.html" class="cur" aria-current="page">Security</a><a href="compare.html">6/7/8 比較</a></div>
+  <div class="brand">Wi-Fi Security</div>
+  <div class="sub">WPA3 / SAE 導讀</div>
+  <button class="menu-btn" id="menuBtn" aria-expanded="false">目錄</button>
+  <ol>
+    <li><a href="#overview">1. 總覽</a></li>
+    <li><a href="#why">2. 為什麼要 SAE</a></li>
+    <li><a href="#flow">3. 連線全貌</a></li>
+    <li><a href="#sae">4. SAE 協定細節</a></li>
+    <li><a href="#fsm">5. SAE 狀態機</a></li>
+    <li><a href="#akm">6. AKM 與金鑰長度</a></li>
+    <li><a href="#modes">7. WPA3-Personal 模式</a></li>
+    <li><a href="#trdisable">8. Transition Disable</a></li>
+    <li><a href="#saepk">9. SAE-PK</a></li>
+    <li><a href="#gen">10. 頻段與世代限制</a></li>
+    <li><a href="#impl">11. 實作要點</a></li>
+    <li><a href="#glossary">12. 名詞表</a></li>
+    <li><a href="#refs">13. 參考資料</a></li>
+  </ol>
+  <button class="theme-btn" id="themeBtn">切換深 / 淺色</button>
+</nav>
+
+<main>
+<header class="hero">
+  <h1>Wi-Fi Security<br>WPA3-Personal 與 SAE</h1>
+  <p class="lead">WPA3-Personal 用 <b>SAE（Simultaneous Authentication of Equals）</b>取代 WPA2 的 PSK：密碼不再直接衍生 PMK，而是透過一次以橢圓曲線為基礎的密碼認證金鑰交換（PAKE）得到每次連線都不同的 PMK。本頁依 <b>IEEE 802.11-2024 §12.4</b> 與 <b>Wi-Fi Alliance WPA3 Specification v4.0</b> 整理 SAE 的訊框、金鑰推導、狀態機，以及 WPA3 在 Wi-Fi 6E / 7 / 8 上的限制。</p>
+  <div class="chips">
+    <span class="chip">IEEE 802.11-2024 §12.4</span><span class="chip">WPA3 Spec v4.0（2026-10）</span>
+    <span class="chip">SAE / H2E / SAE-PK</span><span class="chip">AKM 8 · 9 · 24 · 25</span><span class="chip">首批主題：WPA3-Personal</span>
+  </div>
+  <div class="tip"><b>閱讀建議：</b>先看 3 的序列圖掌握「SAE → Association → 4-way handshake」的全貌，再依需求讀 4（演算法）、5（狀態機與重傳）、7–8（部署模式與降級防護）。頁碼標示為 PDF 頁（802.11-2024：PDF 頁 = 印刷頁 + 1；WPA3 Spec 為文件頁碼）。</div>
+</header>
+
+<!-- 1 -->
+<section id="overview">
+  <h2><span class="num">1</span>總覽</h2>
+  <p class="intro">WPA3 是 Wi-Fi Alliance 的認證計畫，底層機制來自 IEEE 802.11。WPA3 Spec v4.0 定義三個家族：<b>WPA3-Personal</b>（密碼，SAE）、<b>WPA3-Enterprise</b>（802.1X / EAP，含 192-bit 模式）、<b>Wi-Fi Enhanced Open</b>（OWE，無密碼但加密）。本頁先處理 WPA3-Personal。</p>
+  <div class="grid g4">
+    <div class="card kpi"><div class="v">4</div><div class="l">個 Authentication frame 完成 SAE（雙方各一個 Commit、一個 Confirm）</div></div>
+    <div class="card kpi"><div class="v">19</div><div class="l">號群組（P-256）為必須實作；只允許群組 15–21</div></div>
+    <div class="card kpi"><div class="v">PMF</div><div class="l">SAE 連線必須協商 Protected Management Frames</div></div>
+    <div class="card kpi"><div class="v">H2E</div><div class="l">Hash-to-Element：6 GHz 與 Wi-Fi 7 以上必須使用</div></div>
+  </div>
+  <div class="tbl-wrap" style="margin-top:14px">
+  <table>
+    <thead><tr><th>什麼算「WPA3 安全關聯」</th><th>條件（WPA3 Spec §1.4）</th></tr></thead>
+    <tbody>
+      <tr><td>WPA3（Personal）</td><td>協商 <b>PMF</b>，且 AKM 為 SAE <code>00-0F-AC:8</code> / <code>:24</code>、FT-SAE <code>:9</code> / <code>:25</code>，或以 SAE 為 base AKM 的 EPPKE <code>:29</code></td></tr>
+      <tr><td>WPA3（Enterprise）</td><td>協商 PMF，且 AKM 為 802.1X SHA-256 <code>:5</code>、FT-802.1X <code>:3</code>、192-bit <code>:12</code>、FT-802.1X SHA-384 <code>:13</code></td></tr>
+      <tr><td>WPA2</td><td>PSK <code>:2</code> / FT-PSK <code>:4</code>、802.1X SHA-1 <code>:1</code> 等，即使雙方都支援 WPA3，只要協商到這些 AKM 就是 WPA2 關聯</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- 2 -->
+<section id="why">
+  <h2><span class="num">2</span>為什麼要 SAE：PSK 的根本問題</h2>
+  <p class="intro">WPA2-Personal 的 PMK 直接由密碼算出（PBKDF2(passphrase, SSID)），4-way handshake 的 MIC 又是用這把 PMK 算的。攻擊者只要錄下一次 4-way handshake，就能離線無限次猜密碼。</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>性質</th><th>WPA2-PSK</th><th>WPA3 SAE</th></tr></thead>
+    <tbody>
+      <tr><td>PMK 來源</td><td>PMK = PBKDF2(密碼, SSID)，<b>固定不變</b></td><td class="hl">每次 SAE 交換都產生新的 PMK（雙方隨機數參與）</td></tr>
+      <tr><td>離線字典攻擊</td><td>錄下 4-way handshake（或 PMKID）即可離線暴力猜</td><td class="hl">不可行：每次主動攻擊只能驗證一個密碼猜測</td></tr>
+      <tr><td>前向保密</td><td>無：知道密碼即可解開過去錄下的所有流量</td><td class="hl">有：日後密碼外洩也推不出過去的 PMK</td></tr>
+      <tr><td>知道密碼的旁觀者</td><td>可被動解密其他人的流量</td><td class="hl">不行：每個 STA 的 PMK 由各自的 DH 交換決定</td></tr>
+      <tr><td>角色</td><td>Supplicant / Authenticator</td><td>「對等」：雙方都可主動發起（源自 mesh 需求）</td></tr>
+      <tr><td>冒充 AP（evil twin）</td><td>知道密碼就能架假 AP</td><td>仍可能（密碼是對稱秘密）→ 需要 <a href="#saepk">SAE-PK</a></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>802.11-2024 §12.4.1（PDF p.2961–2962）列出 SAE 的安全性質：被動觀察或中繼都無法得到密碼或 PMK；修改、偽造、重放訊框也無法得到；每次攻擊最多只能猜一個密碼；舊 PMK 外洩不影響其他次交換；密碼外洩也推不出先前的 PMK。SAE 是 Dragonfly（IETF RFC 7664）的變形。</p>
+</section>
+
+<!-- 3 -->
+<section id="flow">
+  <h2><span class="num">3</span>連線全貌：從 Beacon 到加密資料</h2>
+  <p class="intro">SAE 只取代「認證」這一步。它產生 PMK 之後，後面的 Association 與 4-way handshake 和 WPA2 的流程一樣。</p>
+  <figure>
+    <svg viewBox="0 0 760 700" role="img" aria-label="WPA3-Personal 連線序列圖：探索、SAE 認證、關聯、4-way handshake、資料">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--muted)"/></marker>
+        <marker id="arg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--c3)"/></marker>
+      </defs>
+      <g font-size="12">
+        <rect x="0" y="56" width="760" height="56" fill="var(--code)" opacity=".55"/>
+        <rect x="0" y="118" width="760" height="252" fill="var(--accent-soft)" opacity=".7"/>
+        <rect x="0" y="376" width="760" height="96" fill="var(--code)" opacity=".55"/>
+        <rect x="0" y="478" width="760" height="166" fill="var(--warn-soft)" opacity=".9"/>
+        <rect x="0" y="650" width="760" height="48" fill="var(--ok-soft)"/>
+        <text x="6" y="74" font-weight="700" class="muted">① 探索</text>
+        <text x="6" y="136" font-weight="700" style="fill:var(--accent)">② SAE 認證</text>
+        <text x="6" y="152" class="muted" font-size="11">Authentication</text>
+        <text x="6" y="166" class="muted" font-size="11">frames, Alg=3</text>
+        <text x="6" y="394" font-weight="700" class="muted">③ 關聯</text>
+        <text x="6" y="496" font-weight="700" style="fill:var(--warn)">④ 4-way</text>
+        <text x="6" y="512" class="muted" font-size="11">EAPOL-Key</text>
+        <text x="6" y="668" font-weight="700" style="fill:var(--ok)">⑤ 資料</text>
+        <rect x="90" y="8" width="120" height="40" rx="8" fill="var(--c3)"/><text x="150" y="25" text-anchor="middle" style="fill:#fff" font-weight="700">STA</text><text x="150" y="40" text-anchor="middle" style="fill:#fff" font-size="11">non-AP（Supplicant）</text>
+        <rect x="550" y="8" width="120" height="40" rx="8" fill="var(--c1)"/><text x="610" y="25" text-anchor="middle" style="fill:#fff" font-weight="700">AP</text><text x="610" y="40" text-anchor="middle" style="fill:#fff" font-size="11">（Authenticator）</text>
+        <g stroke="var(--line)" stroke-width="1.5"><line x1="150" y1="48" x2="150" y2="698"/><line x1="610" y1="48" x2="610" y2="698"/></g>
+
+        <line x1="608" y1="94" x2="152" y2="94" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+        <text x="380" y="88" text-anchor="middle">Beacon / Probe Response</text>
+        <text x="380" y="108" text-anchor="middle" class="muted" font-size="11">RSNE：AKM 8/24、MFPC/MFPR ｜ RSNXE：H2E、SAE-PK 位元</text>
+
+        <line x1="152" y1="160" x2="608" y2="160" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/>
+        <text x="380" y="154" text-anchor="middle" font-weight="700">① SAE Commit（Seq=1, Status=126 H2E）</text>
+        <text x="380" y="176" text-anchor="middle" class="muted" font-size="11">Group · Scalar · Element（+ AKM Suite Selector / Password ID / Rejected Groups）</text>
+        <line x1="608" y1="204" x2="152" y2="204" stroke="var(--c2)" stroke-width="1.2" stroke-dasharray="3 4" marker-end="url(#ar)"/>
+        <text x="380" y="198" text-anchor="middle" style="fill:var(--c2)" font-size="11">（AP 忙碌時）Commit, Status=76 + Anti-Clogging Token → STA 帶 token 重送 ①</text>
+        <line x1="608" y1="240" x2="152" y2="240" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/>
+        <text x="380" y="234" text-anchor="middle" font-weight="700">② SAE Commit（Seq=1, Status=126）</text>
+        <text x="380" y="256" text-anchor="middle" class="muted" font-size="11">雙方驗證對方 scalar / element → 算出共同秘密 K → keyseed → KCK、PMK</text>
+        <line x1="152" y1="290" x2="608" y2="290" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/>
+        <text x="380" y="284" text-anchor="middle" font-weight="700">③ SAE Confirm（Seq=2, Status=0）</text>
+        <text x="380" y="306" text-anchor="middle" class="muted" font-size="11">Send-Confirm 計數 + Confirm = CN(KCK, …兩邊的 scalar / element)</text>
+        <line x1="608" y1="336" x2="152" y2="336" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/>
+        <text x="380" y="330" text-anchor="middle" font-weight="700">④ SAE Confirm（Seq=2, Status=0）</text>
+        <text x="380" y="356" text-anchor="middle" class="muted" font-size="11">互相驗證 Confirm 成功 → Accepted；得到 PMK 與 PMKID</text>
+
+        <line x1="152" y1="412" x2="608" y2="412" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/>
+        <text x="380" y="406" text-anchor="middle" font-weight="700">(Re)Association Request</text>
+        <text x="380" y="428" text-anchor="middle" class="muted" font-size="11">RSNE：選定一個 AKM、Pairwise（CCMP-128 / GCMP-256）、MFPC=1；RSNXE</text>
+        <line x1="608" y1="458" x2="152" y2="458" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/>
+        <text x="380" y="452" text-anchor="middle" font-weight="700">(Re)Association Response（Status=0, AID）</text>
+
+        <line x1="608" y1="530" x2="152" y2="530" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/>
+        <text x="380" y="524" text-anchor="middle">M1：ANonce</text>
+        <line x1="152" y1="564" x2="608" y2="564" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/>
+        <text x="380" y="558" text-anchor="middle">M2：SNonce + RSNE / RSNXE + MIC（STA 已算出 PTK）</text>
+        <line x1="608" y1="598" x2="152" y2="598" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/>
+        <text x="380" y="592" text-anchor="middle">M3：回顯 RSNE/RSNXE + 加密 GTK/IGTK/BIGTK（+ Transition Disable KDE）</text>
+        <line x1="152" y1="632" x2="608" y2="632" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/>
+        <text x="380" y="626" text-anchor="middle">M4：確認 → 雙方安裝 PTK</text>
+
+        <line x1="156" y1="678" x2="604" y2="678" stroke="var(--c3)" stroke-width="5" opacity=".7" marker-end="url(#arg)" marker-start="url(#arg)"/>
+        <text x="380" y="670" text-anchor="middle" style="fill:var(--c3)" font-weight="700">資料以 CCMP / GCMP 加密；Deauth / Disassoc 等管理訊框受 PMF 保護</text>
+      </g>
+    </svg>
+    <figcaption>圖 1：WPA3-Personal（SAE）連線序列。①–④ 為 SAE；雙方 Confirm 的先後順序不固定（規則只要求「自己與對方都 Commit 之後才能 Confirm」），抓包常見順序如圖。Status 126 = SAE_HASH_TO_ELEMENT、76 = ANTI_CLOGGING_TOKEN_REQUIRED。</figcaption>
+  </figure>
+  <div class="grid g3">
+    <div class="card"><b>SAE 階段</b><br>在 802.11 Authentication frame 中完成（Authentication Algorithm Number = 3）。只產生 <b>PMK</b>，還沒有加密金鑰。</div>
+    <div class="card"><b>Association</b><br>STA 在 RSNE 中選定一組 RSN 參數（一個 AKM、一個 pairwise cipher、PMF 等），AP 檢查是否與自己宣告的相容。</div>
+    <div class="card"><b>4-way handshake</b><br>由 PMK + 兩個 nonce 推出 <b>PTK</b>（KCK / KEK / TK），並下發 group key。M3 回顯 Beacon 中的 RSNE / RSNXE，讓 STA 偵測降級攻擊。</div>
+  </div>
+  <div class="note"><b>PMKSA caching：</b>SAE 完成後的 PMK 會以 PMKID 識別並快取。下次重新連同一台 AP 時，STA 在 (Re)Association Request 的 RSNE 帶上 PMKID，AP 若找得到就跳過 SAE 直接做 4-way handshake，省下大量運算。</div>
+</section>
+
+<!-- 4 -->
+<section id="sae">
+  <h2><span class="num">4</span>SAE 協定細節</h2>
+  <p class="intro">SAE 包含兩組交換：<b>Commit 交換</b>迫使雙方各自「承諾」一個密碼猜測，<b>Confirm 交換</b>證明猜測正確（§12.4.5，PDF p.2971–2975）。以下以橢圓曲線（ECC）群組說明。</p>
+
+  <h3>4.1 金鑰推導總覽</h3>
+  <figure>
+    <svg viewBox="0 0 760 230" role="img" aria-label="SAE 金鑰推導鏈：密碼到 PT、PWE、scalar/element、K、keyseed、KCK 與 PMK，再到 PTK">
+      <defs><marker id="kd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--muted)"/></marker></defs>
+      <g font-size="12" text-anchor="middle">
+        <rect x="6" y="20" width="130" height="56" rx="8" fill="var(--panel)" stroke="var(--c4)" stroke-width="1.5"/>
+        <text x="71" y="42" font-weight="700">密碼 + SSID</text><text x="71" y="60" class="muted" font-size="11">（+ Password ID）</text>
+        <rect x="166" y="20" width="130" height="56" rx="8" fill="var(--accent-soft)" stroke="var(--c1)" stroke-width="1.5"/>
+        <text x="231" y="42" font-weight="700">PT</text><text x="231" y="60" class="muted" font-size="11">H2E，可離線預算</text>
+        <rect x="326" y="20" width="130" height="56" rx="8" fill="var(--accent-soft)" stroke="var(--c1)" stroke-width="1.5"/>
+        <text x="391" y="42" font-weight="700">PWE</text><text x="391" y="60" class="muted" font-size="11">綁定雙方 MAC</text>
+        <rect x="486" y="20" width="130" height="56" rx="8" fill="var(--accent-soft)" stroke="var(--c1)" stroke-width="1.5"/>
+        <text x="551" y="42" font-weight="700">scalar · element</text><text x="551" y="60" class="muted" font-size="11">rand、mask（一次性）</text>
+        <rect x="646" y="20" width="108" height="56" rx="8" fill="var(--panel)" stroke="var(--c2)" stroke-width="1.5"/>
+        <text x="700" y="42" font-weight="700">Commit</text><text x="700" y="60" class="muted" font-size="11">送出 / 收到</text>
+        <path d="M136 48 H162" stroke="var(--muted)" stroke-width="1.6" marker-end="url(#kd)"/>
+        <path d="M296 48 H322" stroke="var(--muted)" stroke-width="1.6" marker-end="url(#kd)"/>
+        <path d="M456 48 H482" stroke="var(--muted)" stroke-width="1.6" marker-end="url(#kd)"/>
+        <path d="M616 48 H642" stroke="var(--muted)" stroke-width="1.6" marker-end="url(#kd)"/>
+        <path d="M700 76 V112 H652" stroke="var(--muted)" stroke-width="1.6" fill="none" marker-end="url(#kd)"/>
+        <rect x="486" y="94" width="162" height="56" rx="8" fill="var(--accent-soft)" stroke="var(--c1)" stroke-width="1.5"/>
+        <text x="567" y="116" font-weight="700">K → k = x(K)</text><text x="567" y="134" class="muted" font-size="11">共同秘密（DH 結果）</text>
+        <rect x="326" y="94" width="130" height="56" rx="8" fill="var(--accent-soft)" stroke="var(--c1)" stroke-width="1.5"/>
+        <text x="391" y="116" font-weight="700">keyseed</text><text x="391" y="134" class="muted" font-size="11">H(salt, k)</text>
+        <rect x="166" y="94" width="130" height="56" rx="8" fill="var(--ok-soft)" stroke="var(--c3)" stroke-width="1.5"/>
+        <text x="231" y="116" font-weight="700">SAE-KCK · PMK</text><text x="231" y="134" class="muted" font-size="11">KDF(…, context)</text>
+        <rect x="6" y="94" width="130" height="56" rx="8" fill="var(--panel)" stroke="var(--c2)" stroke-width="1.5"/>
+        <text x="71" y="116" font-weight="700">Confirm</text><text x="71" y="134" class="muted" font-size="11">用 KCK 互相驗證</text>
+        <path d="M486 122 H460" stroke="var(--muted)" stroke-width="1.6" marker-end="url(#kd)"/>
+        <path d="M326 122 H300" stroke="var(--muted)" stroke-width="1.6" marker-end="url(#kd)"/>
+        <path d="M166 122 H140" stroke="var(--muted)" stroke-width="1.6" marker-end="url(#kd)"/>
+        <path d="M231 150 V182" stroke="var(--muted)" stroke-width="1.6" marker-end="url(#kd)"/>
+        <rect x="126" y="186" width="210" height="38" rx="8" fill="var(--warn-soft)" stroke="var(--warn)" stroke-width="1.5"/>
+        <text x="231" y="210" font-weight="700">4-way handshake → PTK</text>
+        <text x="560" y="196" class="muted" font-size="11">PMKID = context 的前 128 bits</text>
+        <text x="560" y="214" class="muted" font-size="11">context = (己方 scalar + 對方 scalar) mod r</text>
+      </g>
+    </svg>
+    <figcaption>圖 2：SAE 金鑰推導鏈。上排是 Commit 前各自完成的運算；下排是收到對方 Commit 之後的運算（由右往左）。</figcaption>
+  </figure>
+
+  <h3>4.2 產生密碼元素 PWE：Hunting-and-Pecking vs Hash-to-Element</h3>
+  <p>SAE 要先把密碼映射成群組中的一個秘密點 <b>PWE</b>（Password Element）。802.11 定義兩種方法：</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>項目</th><th>Hunting-and-Pecking（looping）</th><th>Hash-to-Element（H2E）</th></tr></thead>
+    <tbody>
+      <tr><td>條文</td><td>§12.4.4.2.2（PDF p.2964–2966）</td><td>§12.4.4.2.3（PDF p.2967–2969）</td></tr>
+      <tr><td>做法</td><td>以「密碼 + 雙方 MAC + 計數器」反覆雜湊，直到得到曲線上的合法 x 座標</td><td>先以 HKDF(SSID, 密碼 [, ID]) 得到 u1、u2，經 SSWU 映射成兩點相加得 <b>PT</b>；連線時再用雙方 MAC 算出 val，<code>PWE = val · PT</code></td></tr>
+      <tr><td>運算時間</td><td>迴圈次數與密碼相關 → <b>時間 / cache 旁通道</b>（Dragonblood）</td><td class="hl">確定性、可常數時間實作；PT 可在設定密碼時預先算好</td></tr>
+      <tr><td>MAC 綁定</td><td>每次都要用新的 MAC 組合重跑整個迴圈</td><td>只有最後一次純量乘法與 MAC 相關</td></tr>
+      <tr><td>雜湊</td><td>固定 SHA-256</td><td>依群組質數長度選 SHA-256 / 384 / 512（Table 12-1）</td></tr>
+      <tr><td>宣告與使用</td><td>預設方法</td><td>AP 在 RSNXE 設 <b>SAE Hash-to-Element</b> 位元；STA 以 Commit Status = 126 表示採用。使用 Password Identifier 時必須用 H2E</td></tr>
+      <tr><td>WPA3 要求</td><td>使用時迴圈至少 <b>k ≥ 40</b> 次（掩蓋實際找到的位置）</td><td class="hl">6 GHz、Sub-1 GHz 禁用 H&amp;P；AKM 24/25 一定使用 H2E</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>4.3 Commit：每一方要做什麼</h3>
+  <ol>
+    <li>產生兩個一次性亂數 <code>rand</code>、<code>mask</code>（1 &lt; 值 &lt; r，且 (rand+mask) mod r &gt; 1；不可在不同次交換重用）。</li>
+    <li>計算 <code>commit-scalar = (rand + mask) mod r</code>、<code>COMMIT-ELEMENT = −(mask · PWE)</code>，之後 mask 可丟棄。</li>
+    <li>以 Authentication frame 送出（Algorithm = 3、Transaction Seq = 1）：<b>Finite Cyclic Group</b>、<b>Scalar</b>、<b>Element</b>。依情況再附上：
+      <ul>
+        <li><b>AKM Suite Selector element</b>：要使用 AKM 24 / 25 時必須帶上，對方回應時須帶相同 AKM，否則認證失敗（防止 AKM 被竄改）。</li>
+        <li><b>Password Identifier element</b>：同一 SSID 有多組密碼時，用來指定是哪一組。</li>
+        <li><b>Rejected Groups element</b>：H2E 下，列出先前被對方拒絕的群組；這份清單會被納入 KDF 的 salt，<b>防止群組降級攻擊</b>。</li>
+        <li><b>Anti-Clogging Token</b>：對方要求時才附上（見 4.6）。</li>
+      </ul></li>
+  </ol>
+
+  <h3>4.4 收到對方 Commit：驗證與算出 PMK</h3>
+  <ol>
+    <li><b>驗證 scalar</b>：必須 1 &lt; scalar &lt; r。<b>驗證 element</b>：座標在 [0, p) 且是曲線上的點、不是無窮遠點。若對方送來的 scalar 或 element 與自己送出的相同，也判失敗（防反射攻擊）。</li>
+    <li>計算共同秘密：<code>K = rand · (peer-scalar · PWE + PEER-ELEMENT)</code>。K 若為單位元素則拒絕；否則取 <code>k = F(K)</code>（ECC 為 x 座標）。</li>
+    <li><code>keyseed = H(salt, k)</code>：salt 平時為全 0；H2E 且有被拒群組時，salt 為雙方 Rejected Groups 串接（MAC 較大者在前）。</li>
+    <li><code>context = (commit-scalar + peer-commit-scalar) mod r</code>，以 KDF(keyseed, "SAE KCK and PMK", context) 切出 <b>SAE-KCK</b> 與 <b>PMK</b>；<b>PMKID</b> = context 的前 128 bits。</li>
+  </ol>
+  <div class="tip"><b>為什麼離線字典攻擊行不通：</b>scalar / element 被 rand 與 mask 遮蔽，旁觀者看到的只是隨機的群組元素；要驗證一個密碼猜測，攻擊者必須用該猜測產生的 PWE 參與一次真實的交換，每次交換只能試一個密碼。</div>
+
+  <h3>4.5 Confirm：證明雙方算出同一把金鑰</h3>
+  <ul>
+    <li><code>confirm = CN(SAE-KCK, send-confirm, 己方 scalar, 己方 element, 對方 scalar, 對方 element)</code>，CN 是 HMAC 形式的雜湊。</li>
+    <li>送出 Authentication frame（Seq = 2、Status = 0），內含 <b>Send-Confirm</b> 計數器（防重放，每次重送遞增）與 <b>Confirm</b> 欄位。</li>
+    <li>收方以相反順序（對方的放前面）計算 verifier 比對；不符則以 Status 15（CHALLENGE_FAILURE）拒絕。雙方都驗證成功即完成認證，PMK 交給後續 Association 與 4-way handshake 使用。</li>
+  </ul>
+
+  <h3>4.6 Anti-Clogging：防止 Commit 洪水</h3>
+  <p>處理一個 Commit 需要數次橢圓曲線純量乘法，攻擊者可以偽造大量 MAC 送 Commit 把 AP 的 CPU 耗光。對策（§12.4.6，PDF p.2975–2976）：</p>
+  <ul>
+    <li>AP 的 SAE 父程序維護計數器 <b>Open</b>（處於 Committed / Confirmed 的協定實例數）。超過 <code>dot11RSNASAEAntiCloggingThreshold</code> 後，對每個新 Commit 不做運算，直接以 <b>Status 76</b> 回覆一個與來源 MAC 綁定的 token（例如 H(秘密, MAC)），AP 自己不需要保存狀態。</li>
+    <li>STA 必須把 token 原封不動附在下一個 Commit 中重送，證明自己真的能在那個 MAC 位址收到訊框。H2E 下 token 包在 <b>Anti-Clogging Token Container element</b> 中。</li>
+  </ul>
+
+  <h3>4.7 SAE 訊框與狀態碼速查</h3>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>訊息</th><th>Auth Seq</th><th>Status</th><th>主要內容</th></tr></thead>
+    <tbody>
+      <tr><td>SAE Commit</td><td>1</td><td>0 SUCCESS（H&amp;P）／<b>126</b> SAE_HASH_TO_ELEMENT／<b>127</b> SAE_PK</td><td>Group、Scalar、Element；選用 Token、Password ID、Rejected Groups、AKM Suite Selector</td></tr>
+      <tr><td>SAE Confirm</td><td>2</td><td>0 SUCCESS</td><td>Send-Confirm、Confirm（SAE-PK 時另含 SAE-PK / FILS Public Key / FILS Key Confirmation element）</td></tr>
+      <tr><td>拒絕：需要 token</td><td>1</td><td>76 ANTI_CLOGGING_TOKEN_REQUIRED</td><td>Anti-Clogging Token</td></tr>
+      <tr><td>拒絕：群組不支援</td><td>1</td><td>77 UNSUPPORTED_FINITE_CYCLIC_GROUP</td><td>發起方改用下一個群組重試（H2E 下記入 Rejected Groups）</td></tr>
+      <tr><td>拒絕：密碼識別碼未知</td><td>1</td><td>123 UNKNOWN_PASSWORD_IDENTIFIER</td><td>—</td></tr>
+      <tr><td>拒絕：Confirm 驗證失敗</td><td>2</td><td>15 CHALLENGE_FAILURE</td><td>—</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- 5 -->
+<section id="fsm">
+  <h2><span class="num">5</span>SAE 狀態機</h2>
+  <p class="intro">每個 SAE 協定實例以「本地 MAC + 對端 MAC」識別，由 SME 中的父程序分派訊框（§12.4.8，PDF p.2978–2986）。同一對端同時只能有一個實例在 Committed / Confirmed，一個在 Accepted。</p>
+  <figure>
+    <svg viewBox="0 0 760 250" role="img" aria-label="SAE 有限狀態機：Nothing、Committed、Confirmed、Accepted">
+      <defs><marker id="fs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--muted)"/></marker></defs>
+      <g font-size="12" text-anchor="middle">
+        <rect x="10" y="90" width="130" height="50" rx="25" fill="var(--panel)" stroke="var(--muted)" stroke-width="1.8"/><text x="75" y="120" font-weight="700">Nothing</text>
+        <rect x="215" y="90" width="130" height="50" rx="25" fill="var(--accent-soft)" stroke="var(--c1)" stroke-width="1.8"/><text x="280" y="120" font-weight="700">Committed</text>
+        <rect x="420" y="90" width="130" height="50" rx="25" fill="var(--accent-soft)" stroke="var(--c1)" stroke-width="1.8"/><text x="485" y="120" font-weight="700">Confirmed</text>
+        <rect x="620" y="90" width="130" height="50" rx="25" fill="var(--ok-soft)" stroke="var(--c3)" stroke-width="1.8"/><text x="685" y="120" font-weight="700">Accepted</text>
+        <path d="M140 115 H211" stroke="var(--muted)" stroke-width="1.6" marker-end="url(#fs)"/>
+        <text x="177" y="106" font-size="11">Init</text><text x="177" y="134" font-size="11" class="muted">送 Commit</text>
+        <path d="M345 115 H416" stroke="var(--muted)" stroke-width="1.6" marker-end="url(#fs)"/>
+        <text x="380" y="106" font-size="11">收 Commit</text><text x="380" y="134" font-size="11" class="muted">送 Confirm</text>
+        <path d="M550 115 H616" stroke="var(--muted)" stroke-width="1.6" marker-end="url(#fs)"/>
+        <text x="583" y="106" font-size="11">收 Confirm</text><text x="583" y="134" font-size="11" class="muted">驗證成功</text>
+        <path d="M75 90 C 75 30, 485 30, 485 86" stroke="var(--c2)" stroke-width="1.6" fill="none" marker-end="url(#fs)"/>
+        <text x="280" y="36" font-size="11" style="fill:var(--c2)">被動方：收到 Commit → 同時送出 Commit + Confirm</text>
+        <path d="M262 140 C 240 180, 320 180, 298 144" stroke="var(--muted)" stroke-width="1.3" fill="none" marker-end="url(#fs)"/>
+        <text x="280" y="196" font-size="11" class="muted">t0 逾時：Sync+1，重送 Commit</text>
+        <path d="M467 140 C 445 180, 525 180, 503 144" stroke="var(--muted)" stroke-width="1.3" fill="none" marker-end="url(#fs)"/>
+        <text x="485" y="196" font-size="11" class="muted">t0 逾時：Sync+1、Sc+1，重送 Confirm</text>
+        <text x="380" y="232" font-size="11" class="muted">任一狀態：Sync &gt; dot11RSNASAESync 或致命錯誤 → Del，回到 Nothing（實例刪除）；Accepted 狀態下 t1（PMK 壽命）到期 → Del</text>
+      </g>
+    </svg>
+    <figcaption>圖 3：SAE 狀態機簡化版（完整轉移見 Figure 12-14）。主動發起的一方走 Nothing → Committed → Confirmed → Accepted。</figcaption>
+  </figure>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>元素</th><th>意義</th></tr></thead>
+    <tbody>
+      <tr><td><b>Nothing</b></td><td>剛建立或即將刪除的實例；轉入此狀態的實例會立即被刪除</td></tr>
+      <tr><td><b>Committed</b></td><td>已送出 Commit，等待對方的 Commit 與 Confirm</td></tr>
+      <tr><td><b>Confirmed</b></td><td>已送出 Commit 與 Confirm、已收到對方 Commit，等待對方 Confirm</td></tr>
+      <tr><td><b>Accepted</b></td><td>雙方 Commit / Confirm 都已收送並驗證，協定完成</td></tr>
+      <tr><td>Sync</td><td>狀態重新同步（重送）次數，超過 <code>dot11RSNASAESync</code> 即放棄</td></tr>
+      <tr><td>Sc / Rc</td><td>己方已送出的 Confirm 次數（即 send-confirm 計數）／ 最近收到的對方 send-confirm 值</td></tr>
+      <tr><td>t0 / t1</td><td>重送計時器（<code>dot11RSNASAERetransPeriod</code>）／ PMK 到期計時器（<code>dot11RSNAConfigPMKLifetime</code>）</td></tr>
+      <tr><td>群組衝突</td><td>雙方同時發起且選了不同群組時，以 MAC 大小（highmac / lowmac）決定誰讓步</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- 6 -->
+<section id="akm">
+  <h2><span class="num">6</span>AKM 與金鑰長度</h2>
+  <p class="intro">同樣是 SAE，AKM 不同會影響 PMK 長度、後續 KDF 的雜湊與是否支援 FT。Wi-Fi 7 以上必須使用 AKM 24（GDH = Group-Dependent Hash）。</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>AKM</th><th>名稱</th><th>PWE 方法</th><th>PMK 長度</th><th>適用</th></tr></thead>
+    <tbody>
+      <tr><td><code>00-0F-AC:8</code></td><td>SAE</td><td>H&amp;P 或 H2E</td><td>256 bits</td><td>Wi-Fi 6 以前的主流；<b>不可用於 EHT / MLO 關聯</b></td></tr>
+      <tr><td><code>00-0F-AC:9</code></td><td>FT over SAE</td><td>H&amp;P 或 H2E</td><td>256 bits</td><td>需要 802.11r 快速漫遊</td></tr>
+      <tr><td><code>00-0F-AC:24</code></td><td>SAE-GDH（SAE using group-dependent hash）</td><td class="hl">一定 H2E</td><td>= 群組雜湊長度（P-256 → 256、P-384 → 384）</td><td class="hl">EHT / MLO 必須啟用；UHR 的 security profile #9</td></tr>
+      <tr><td><code>00-0F-AC:25</code></td><td>FT over SAE-GDH</td><td>一定 H2E</td><td>= 群組雜湊長度</td><td>Wi-Fi 7 以上需 FT 時</td></tr>
+      <tr><td><code>00-0F-AC:29</code> + base 24 / 25</td><td>EPPKE（Enhanced Privacy Protection Key Exchange，802.11bi）</td><td>—</td><td>—</td><td>Wi-Fi 8：security profile #1 / #2</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <h3>6.1 STA 的 AKM 選擇順序（WPA3 Spec §5.4.1）</h3>
+  <p>當 AP 同時宣告多個 AKM，WPA3 STA 必須依下列順序選第一個雙方都允許的：</p>
+  <ol>
+    <li>EPPKE（base AKM 25，FT-SAE-GDH）— security profile #2</li>
+    <li>FT over SAE-GDH（:25）</li>
+    <li>EPPKE（base AKM 24，SAE-GDH）— security profile #1</li>
+    <li>SAE-GDH（:24）— security profile #9</li>
+    <li>FT over SAE（:9）</li>
+    <li>SAE（:8）</li>
+    <li>FT over PSK（:4）</li>
+    <li>PSK SHA-256（:6）</li>
+    <li>PSK（:2）</li>
+  </ol>
+  <div class="note">這個順序只規範「在同一個 BSS 內選哪個 AKM」，不代表 STA 在多台 AP 之間如何挑選。</div>
+</section>
+
+<!-- 7 -->
+<section id="modes">
+  <h2><span class="num">7</span>WPA3-Personal 的部署模式</h2>
+  <p class="intro">為了讓 WPA2 裝置還能連上，WPA3-Personal 定義了數種模式。差別在於 AP 開哪些 AKM、PMF 是 Capable 還是 Required（WPA3 Spec §2）。</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>模式</th><th>AP 開啟的 AKM</th><th>PMF（MFPC / MFPR）</th><th>WPA2 裝置</th><th>重點</th></tr></thead>
+    <tbody>
+      <tr><td><b>Only</b></td><td>SAE :8 和／或 :24（有 :24 時建議也開 :8）；<b>不得</b>開任何 PSK</td><td>1 / 1（Required）</td><td>無法連線</td><td>最安全；6 GHz 唯一允許的 Personal 模式</td></tr>
+      <tr><td><b>Transition</b></td><td>至少 PSK :2 + SAE :8；建議加 :6、:24</td><td>1 / 0（Capable）</td><td>以 PSK 連線</td><td>同一 BSS 同時接受 WPA2 / WPA3；以 SAE 連線時 AP 必須要求 PMF。6 GHz、Sub-1 GHz 不允許</td></tr>
+      <tr><td><b>Compatibility</b>（v4.0 新增）</td><td>RSNE 只放 PSK :2；SAE :8 放在 <b>RSNE Override</b>；EHT/MLO 時 :24 放在 <b>RSNE Override 2</b></td><td>RSNE：0~1 / 0；Override：1 / 1</td><td>以 PSK 連線（看不到 SAE）</td><td>用 <b>RSN overriding</b> 把 WPA3 參數藏在新 element 裡，避開舊 STA 解析多 AKM 的相容性問題</td></tr>
+      <tr><td><b>SAE-PK</b> Only / Transition</td><td>SAE + SAE-PK</td><td>依底層模式</td><td>依底層模式</td><td>AP 額外以公私鑰證明身分，見 <a href="#saepk">9</a></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <h3>7.1 所有 WPA3-Personal 模式共通要求（WPA3 Spec §2.5）</h3>
+  <div class="grid g2">
+    <div class="card"><b>AP 端</b>
+      <ul>
+        <li>同一 BSS 不得同時開 WPA1、WEP、TKIP。</li>
+        <li>開了任何 PSK AKM，就必須同時開 SAE（除非管理者明確設為 WPA2-Personal Only）。</li>
+        <li>啟用 EHT / MLO：必須開 AKM :24 與 pairwise <b>GCMP-256</b>。</li>
+        <li>啟用 UHR：必須開 security profile #1（EPPKE + SAE :24）與 #9（SAE :24）。</li>
+        <li>SAE 只能使用 DH 群組 <b>15–21</b>。</li>
+      </ul></div>
+    <div class="card"><b>STA 端</b>
+      <ul>
+        <li>依 6.1 的 AKM 順序選擇；Network Profile 不得開 WEP / TKIP。</li>
+        <li>啟用 EHT / MLO：Network Profile 必須允許 :24 與 GCMP-256。</li>
+        <li>啟用 UHR：至少允許 security profile #1 或 #9。</li>
+        <li>H&amp;P 迴圈 k ≥ 40；實作須避免可經 cache 觀察的執行差異。</li>
+      </ul></div>
+  </div>
+  <div class="tip"><b>RSN overriding 的降級防護：</b>支援 overriding 的 STA 會把 SNonce 最後 6 octets 設為特定 cookie；AP 在 M2 看到 cookie，就在 M3 把 Beacon 中所有 RSNE / RSNXE 變體（含 Override 版本）完整回顯，STA 比對不一致即中斷連線。M2 若帶 RSN Selection element，也必須與 Association Request 中的一致（WPA3 Spec §15.3）。</div>
+</section>
+
+<!-- 8 -->
+<section id="trdisable">
+  <h2><span class="num">8</span>Transition Disable：關掉降級的後門</h2>
+  <p class="intro">Transition 模式的風險：攻擊者架一個只宣告 PSK 的假 AP，誘使支援 WPA3 的 STA 改用 PSK 連線，再錄下 4-way handshake 做離線字典攻擊（Dragonblood 的降級攻擊）。Transition Disable 讓 AP 通知 STA：「這個網路已全面支援 WPA3，以後別再用舊方法。」</p>
+  <div class="grid g2">
+    <div class="card feat"><span class="tag">AP</span><h4>如何指示</h4>
+      <p>在 4-way handshake 的 <b>M3 Key Data</b> 中放 <b>Transition Disable KDE</b>（WFA OUI 50-6F-9A、type 0x20），因此受 PTK 保護、無法偽造。FILS 時放在 (Re)Association Response 的 Key Delivery element。只對 WPA3 / Enhanced Open 關聯送出，不送給 WPA2 關聯；<b>AP 預設不得啟用</b>，須由了解全網設定的管理者或 controller 決定。</p></div>
+    <div class="card feat"><span class="tag">STA</span><h4>收到後怎麼做</h4>
+      <p>該 SSID 的 Network Profile 永久停用 WEP / TKIP 與「不協商 PMF 的連線」，並依 bitmap 停用對應的舊演算法，套用到該 SSID 的所有 BSS，直到 profile 被刪除。實作可要求使用者確認。</p></div>
+  </div>
+  <div class="tbl-wrap" style="margin-top:14px">
+  <table>
+    <thead><tr><th>Bit</th><th>名稱</th><th>STA 以此連線時…</th><th>…停用這些</th></tr></thead>
+    <tbody>
+      <tr><td>0</td><td>WPA3-Personal</td><td>SAE :8 / :24</td><td>所有 PSK 與 FT-PSK AKM（:2、:4、:6、:19、:20）</td></tr>
+      <tr><td>1</td><td>SAE-PK</td><td>使用 SAE-PK 的 :8 / :24</td><td>不使用 SAE-PK 的所有 SAE / FT-SAE（:8、:9、:24、:25）</td></tr>
+      <tr><td>2</td><td>WPA3-Enterprise</td><td>802.1X SHA-256 :5</td><td>802.1X SHA-1 :1</td></tr>
+      <tr><td>3</td><td>Enhanced Open</td><td>OWE :18</td><td>不加密的 Open（STA 可選擇是否執行）</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>Transition Disable 不代表 AP 必須關掉 Transition 模式：AP 可以繼續讓 WPA2 裝置用 PSK 連線，同時保護已經用 SAE 連過的 WPA3 裝置。QR code 中的 <code>R:</code> 欄位（WIFI URI 的 trdisable）可在第一次設定時就套用，連第一次連線都免於降級。</p>
+</section>
+
+<!-- 9 -->
+<section id="saepk">
+  <h2><span class="num">9</span>SAE-PK：密碼公開也不怕假 AP</h2>
+  <p class="intro">咖啡廳、旅館的密碼貼在牆上，任何人都知道。一般 SAE 可防竊聽，但無法防止知道密碼的人架設假 AP（evil twin）。SAE-PK 讓 AP 額外持有一組 ECDSA 金鑰，<b>密碼本身就是 AP 公鑰的指紋</b>（WPA3 Spec §7）。</p>
+  <h3>9.1 密碼怎麼來</h3>
+  <ul>
+    <li>管理者產生金鑰對 K_AP / k_AP（至少支援 P-256），全網所有 AP 共用同一組，私鑰不得離開 AP。</li>
+    <li>一次性暴力搜尋 128-bit <b>Modifier M</b>，使 <code>Hash(SSID ‖ M ‖ K_AP)</code> 的前 Sec octets 為 0（Sec = 3 或 5）。這種 hash extension 讓較短的密碼也有足夠的抗第二原像強度。</li>
+    <li>其餘指紋位元以 Base32 編碼，每 4 字元加一個連字號，最後一個字元是 Verhoeff 檢查碼，例如 <code>a2bc-de3f-ghi4</code>。密碼至少 12 字元。</li>
+  </ul>
+  <h3>9.2 連線時多做的事</h3>
+  <ol>
+    <li>STA 在 SAE Commit 以 <b>Status 127（SAE_PK）</b>表示要用 SAE-PK（隱含 H2E）；AP 在 RSNXE 設 SAE-PK 位元宣告支援。</li>
+    <li>SAE 的 KDF 額外切出一把 <b>KEK</b>（標籤 "SAE-PK keys"）。</li>
+    <li>AP 的 SAE Confirm frame 額外夾帶：以 KEK 加密（AES-SIV）的 Modifier、FILS Public Key element（K_AP）、FILS Key Confirmation element（對雙方 element、scalar、M、K_AP 與雙方 MAC 的 ECDSA 簽章；MLD 之間使用 MLD MAC 位址）。</li>
+    <li>STA 解出 M，由 SSID + M + K_AP 重算指紋並與密碼比對（或與先前儲存的公鑰比對），再驗證簽章。全部成功才進入 Accepted，並儲存公鑰供下次使用。</li>
+  </ol>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>密碼長度（Base32 字元）</th><th>Sec</th><th>指紋強度 S（bits）</th><th>以 50 TH/s 找第二原像平均所需時間</th></tr></thead>
+    <tbody>
+      <tr><td>12</td><td>3</td><td>76</td><td>約 48 年</td></tr>
+      <tr><td>12</td><td>5</td><td>92</td><td>約 310 萬年</td></tr>
+      <tr><td>16</td><td>3</td><td>95</td><td>約 2,510 萬年</td></tr>
+      <tr><td>16</td><td>5</td><td>111</td><td>約 1.6 兆年</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="note"><b>部署提醒：</b>安全要求較高的網路建議 S ≥ 92 bits。SAE-PK 只防假 AP，不防「知道密碼的人連進來」，仍需搭配 client isolation。AP 預設應在 SAE-PK 連線中送出 Transition Disable bit 1，否則 STA 仍可能被降級到一般 SAE。</div>
+</section>
+
+<!-- 10 -->
+<section id="gen">
+  <h2><span class="num">10</span>頻段與世代限制</h2>
+  <p class="intro">新頻段與新世代沒有舊裝置包袱，所以 WPA3 Spec §12 直接禁止舊演算法。</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>情境</th><th>禁止 / 要求</th></tr></thead>
+    <tbody>
+      <tr><td><b>6 GHz</b>（Wi-Fi 6E 以上）</td><td>禁 TKIP、任何 PSK / FT-PSK、802.1X SHA-1、SAE Hunting-and-Pecking（只能 H2E）、Open 不加密、Transition 模式；PMF 必須 Required</td></tr>
+      <tr><td><b>Sub-1 GHz</b></td><td>與 6 GHz 類似：禁 TKIP、PSK、H&amp;P、Transition 模式；PMF Required</td></tr>
+      <tr><td><b>EHT / MLO</b>（Wi-Fi 7）</td><td>協商 EHT 或 MLO 的關聯不得使用 PSK 或 802.1X SHA-1；SAE 要用 :24（不用 :8）；pairwise 須支援 GCMP-256。AP 仍可為非 EHT 的舊 STA 宣告 PSK，舊 STA 會以 HE 以下的能力連線</td></tr>
+      <tr><td><b>UHR</b>（Wi-Fi 8）</td><td>一律以 <b>Security Profile element</b> 協商（取代 RSNE 選擇）；不可協商 profile #10–#15；在 <a href="wifi8.html#mobility">SMD（Seamless Mobility Domain）</a> 中只能使用 EPP 類 profile（#0–#7），因此 SAE 會以 EPPKE 形式出現</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <h3>10.1 Wi-Fi 8 的 Security Profile</h3>
+  <p>Security Profile element 把「AKM + cipher + 其他參數」打包成固定編號的 profile，減少組合數，也避免舊 STA 解析 RSNE 擴充欄位時出錯（WPA3 Spec §5.3、§16；細節定義在 802.11bn Draft）。與 SAE 相關的 profile：</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Profile</th><th>內容</th><th>備註</th></tr></thead>
+    <tbody>
+      <tr><td>#0</td><td>Unauthenticated EPPKE（無 base AKM）</td><td>Enhanced Open 的 Wi-Fi 8 版本</td></tr>
+      <tr><td>#1</td><td>EPPKE + SAE :24</td><td>UHR AP 必須啟用；可用於 SMD</td></tr>
+      <tr><td>#2</td><td>EPPKE + FT-SAE :25</td><td>Personal 選擇順序第一</td></tr>
+      <tr><td>#9</td><td>SAE :24</td><td>UHR AP 必須啟用；<b>不可</b>用於 SMD 關聯</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="note">UHR 部分引用 IEEE P802.11bn/D2.0，會隨 Draft 變動。AP MLD 的所有 affiliated AP 必須宣告相同的 Security Profile element；AP 在 M3 回顯該 element，STA 比對與 Beacon 不符就必須斷線。</div>
+  <h3>10.2 MLD（Wi-Fi 7）上的 SAE</h3>
+  <ul>
+    <li>SAE 在 non-AP MLD 與 AP MLD 之間執行一次，雙方以 <b>MLD MAC 位址</b>作為身分（802.11be §12.4.1，PDF p.396；PWE、SAE-PK 簽章都使用 MLD MAC）。完成後一個 PMKSA / PTKSA 涵蓋所有 link。</li>
+    <li>(Re)Association Request 的 A1 / A2 必須與最後一次成功認證的 Authentication frame 相同（WPA3 Spec §11）。若預先認證的那條 link 消失，可透過任一 affiliated AP 以 PMKSA caching 重新認證。</li>
+  </ul>
+</section>
+
+<!-- 11 -->
+<section id="impl">
+  <h2><span class="num">11</span>實作要點與已知攻擊</h2>
+  <p class="intro">SAE 的數學是安全的，歷年問題多半出在實作與部署。2019 年公開的 <b>Dragonblood</b>（Vanhoef &amp; Ronen）是整理這些問題的最佳起點，後續 802.11 與 WPA3 的許多規定都是它的對策。</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>問題</th><th>說明</th><th>對策（規範出處）</th></tr></thead>
+    <tbody>
+      <tr><td>時間旁通道</td><td>H&amp;P 對 MODP 群組的迴圈次數與密碼相關，可由回應時間推測</td><td>只允許群組 15–21（排除小於 3072 bits 的 MODP）、H&amp;P 至少 40 次、改用 H2E（WPA3 附錄 B）</td></tr>
+      <tr><td>Cache 旁通道</td><td>同機上的惡意程式觀察 cache 存取模式，配合離線分割攻擊縮小密碼範圍</td><td>常數時間、記憶體存取模式與密碼無關；H2E 實作加入 dummy 迭代與 blinding（WPA3 附錄 B.2）</td></tr>
+      <tr><td>Transition 模式降級</td><td>假 AP 只宣告 PSK，誘使 WPA3 STA 改用 PSK</td><td>Transition Disable、M3 回顯 RSNE/RSNXE、6 GHz 禁 Transition</td></tr>
+      <tr><td>群組降級</td><td>偽造 Status 77 迫使雙方改用較弱群組</td><td>H2E 的 Rejected Groups element 納入 KDF salt</td></tr>
+      <tr><td>Commit 洪水 DoS</td><td>偽造 MAC 大量送 Commit 耗盡 AP CPU</td><td>Anti-Clogging Token；實作上再限制每秒處理量、排程優先序</td></tr>
+      <tr><td>無效點攻擊</td><td>送出不在曲線上的 element 套出秘密</td><td>收到 Commit 時嚴格驗證 scalar 範圍與 element 是否在曲線上</td></tr>
+      <tr><td>MAC 隨機化</td><td>STA 每次換 MAC，H2E 的 PT 可重用，但 PWE、PMKSA 須依新 MAC 重算</td><td>PMKSA cache 以 MAC 對索引；隨機 MAC 下 caching 命中率會下降</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <h3>11.1 系統設計檢查</h3>
+  <div class="grid g2">
+    <div class="card"><b>AP / Router</b>
+      <ul>
+        <li>6 GHz 與 EHT BSS：預設 WPA3-Personal Only、H2E、AKM :24 + GCMP-256。</li>
+        <li>2.4 / 5 GHz：評估 Transition 與 Compatibility 模式，對舊 STA 做相容性測試。</li>
+        <li>SAE 運算量：大量 STA 同時重連（開機、斷電恢復）時的 CPU 峰值與 anti-clogging 門檻。</li>
+        <li>Transition Disable 預設關閉，由 controller 依全網設定決定。</li>
+        <li>多 AP 網路的 SAE-PK 私鑰與 Modifier 安全分發（規範未定義）。</li>
+      </ul></div>
+    <div class="card"><b>STA / Client</b>
+      <ul>
+        <li>密碼以 UTF-8 + RFC 8265 OpaqueString 正規化，確保雙方得到相同的位元串。</li>
+        <li>PT 在設定密碼時預先算好（每個群組一份），縮短連線時間。</li>
+        <li>保存 Transition Disable 狀態與 SAE-PK 公鑰，生命週期跟 Network Profile 綁定。</li>
+        <li>PMKSA caching 與 MAC 隨機化策略的取捨。</li>
+        <li>OCV（Operating Channel Validation）必須在 PMF 啟用時才使用（WPA3 Spec §13）。</li>
+      </ul></div>
+  </div>
+</section>
+
+<!-- 12 -->
+<section id="glossary">
+  <h2><span class="num">12</span>名詞表</h2>
+  <input class="search" id="gq" type="search" placeholder="搜尋名詞，例如 PWE、H2E、PMKID…" aria-label="搜尋名詞">
+  <dl class="gloss" id="gloss">
+    <div><dt>SAE</dt><dd>Simultaneous Authentication of Equals，基於 Dragonfly 的密碼認證金鑰交換，雙方地位對等。</dd></div>
+    <div><dt>PAKE</dt><dd>Password-Authenticated Key Exchange，以密碼認證並協商金鑰，可抵抗離線字典攻擊。</dd></div>
+    <div><dt>AKM</dt><dd>Authentication and Key Management suite，例如 <code>00-0F-AC:8</code>（SAE）。</dd></div>
+    <div><dt>PWE</dt><dd>Password Element，由密碼與雙方 MAC 映射出的群組秘密元素。</dd></div>
+    <div><dt>PT</dt><dd>H2E 中只由密碼、SSID（與 Password ID）算出的中間秘密元素，可離線預算。</dd></div>
+    <div><dt>H2E</dt><dd>Hash-to-Element，確定性、可常數時間的 PWE 產生法（SSWU），取代 Hunting-and-Pecking。</dd></div>
+    <div><dt>H&amp;P</dt><dd>Hunting-and-Pecking，以迴圈嘗試找出 PWE 的舊方法，有旁通道風險。</dd></div>
+    <div><dt>Scalar / Element</dt><dd>SAE Commit 中送出的純量與群組元素，由 rand、mask 與 PWE 算出。</dd></div>
+    <div><dt>SAE-KCK</dt><dd>SAE 的金鑰確認金鑰，用來計算 Confirm；與 4-way handshake 的 KCK 無關。</dd></div>
+    <div><dt>PMK / PMKID</dt><dd>Pairwise Master Key 與其識別碼；SAE 的 PMKID 取自雙方 scalar 和的前 128 bits。</dd></div>
+    <div><dt>PTK</dt><dd>Pairwise Transient Key，4-way handshake 由 PMK 推出，含 KCK、KEK、TK。</dd></div>
+    <div><dt>GDH</dt><dd>Group-Dependent Hash，AKM 24 / 25：KDF 雜湊依 DH 群組強度選擇。</dd></div>
+    <div><dt>PMF</dt><dd>Protected Management Frames（802.11w），MFPC = 能力、MFPR = 必須。</dd></div>
+    <div><dt>RSNE / RSNXE</dt><dd>RSN element / RSN Extension element，宣告 AKM、cipher、PMF 與 H2E、SAE-PK 等擴充能力。</dd></div>
+    <div><dt>RSN overriding</dt><dd>把較新的 RSN 參數放在 RSNE Override / Override 2 element，避免舊 STA 解析問題。</dd></div>
+    <div><dt>Anti-Clogging Token</dt><dd>AP 忙碌時要求 STA 回帶的無狀態 token，證明 STA 真的在該 MAC 上。</dd></div>
+    <div><dt>Transition Disable</dt><dd>AP 在 M3 以 KDE 通知 STA 永久停用某些舊演算法，防止降級。</dd></div>
+    <div><dt>SAE-PK</dt><dd>SAE Public Key：密碼即 AP 公鑰指紋，AP 以簽章證明身分，防 evil twin。</dd></div>
+    <div><dt>EPPKE</dt><dd>Enhanced Privacy Protection Key Exchange（802.11bi），Wi-Fi 8 的 security profile 使用。</dd></div>
+    <div><dt>Security Profile</dt><dd>Wi-Fi 8 以編號 profile 打包安全參數的機制，UHR 關聯一律使用。</dd></div>
+    <div><dt>OCV</dt><dd>Operating Channel Validation，在金鑰交換中確認雙方所在通道，防通道型中間人攻擊。</dd></div>
+  </dl>
+</section>
+
+<!-- 13 -->
+<section id="refs">
+  <h2><span class="num">13</span>參考資料</h2>
+  <div class="grid g2">
+    <div class="card"><b>一手來源</b>
+      <ul>
+        <li>IEEE 802.11-2024 §12.4「Authentication using a password」（<code>80211-2024.pdf</code>，PDF p.2961–2986）；SAE 測試向量見 Annex J.10（PDF p.5812–5816）</li>
+        <li>Wi-Fi Alliance, <i>WPA3 Specification</i> v4.0（2026-10-21）：§1.4、§2、§5、§7、§9、§11、§12、§15、§16、附錄 B</li>
+        <li><a href="https://datatracker.ietf.org/doc/html/rfc7664" target="_blank" rel="noopener">IETF RFC 7664：Dragonfly Key Exchange</a></li>
+        <li><a href="https://datatracker.ietf.org/doc/html/rfc8265" target="_blank" rel="noopener">IETF RFC 8265：PRECIS（密碼字串正規化）</a></li>
+      </ul></div>
+    <div class="card"><b>延伸閱讀</b>
+      <ul>
+        <li><a href="https://wpa3.mathyvanhoef.com/" target="_blank" rel="noopener">Dragonblood: Analysing WPA3's Dragonfly Handshake</a>（Vanhoef &amp; Ronen, 2019）</li>
+        <li><a href="https://www.wi-fi.org/discover-wi-fi/security" target="_blank" rel="noopener">Wi-Fi Alliance：Wi-Fi Security</a>（WPA3 與 Deployment Guide）</li>
+        <li><a href="https://w1.fi/hostapd/" target="_blank" rel="noopener">hostapd / wpa_supplicant</a>：開源 SAE 參考實作（<code>src/common/sae.c</code>）</li>
+      </ul></div>
+  </div>
+  <div class="note">WPA3 Specification 為 Wi-Fi Alliance 文件，本頁僅以學習為目的摘要整理，原文不包含在本 repo 中。</div>
+</section>
+
+<footer>
+  整理自 IEEE 802.11-2024 與 Wi-Fi Alliance WPA3 Specification v4.0，學習輔助用；條文細節與數值請以原文為準。最後更新：2026-11-22。
+</footer>
+</main>
+</div>
+<script src="assets/site.js"></script>
+</body>
+</html>

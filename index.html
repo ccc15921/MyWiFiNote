@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Wi-Fi 標準技術手冊</title>
-<meta name="description" content="IEEE 802.11 各世代標準（Wi-Fi 8 / Wi-Fi 7 …）給系統設計工程師的技術導讀與規格速查">
+<meta name="description" content="IEEE 802.11 各世代標準（Wi-Fi 8 / Wi-Fi 7 …）給系統設計工程師的技術導讀">
 <script>(function(){var t=null;try{t=new URLSearchParams(location.search).get("theme")}catch(e){}if(t!=="dark"&&t!=="light"){try{t=localStorage.getItem("wifi8-theme")}catch(e){}}if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t)})();</script>
 <link rel="stylesheet" href="assets/site.css">
 </head>
 <body>
 <div class="layout">
 <nav class="toc" id="toc">
-  <div class="sitenav"><a href="index.html" class="cur" aria-current="page">首頁</a><a href="wifi8.html">Wi-Fi 8</a><a href="wifi7.html">Wi-Fi 7</a><a href="wifi-sensing.html">Wi-Fi Sensing</a><a href="compare.html">6/7/8 比較</a></div>
+  <div class="sitenav"><a href="index.html" class="cur" aria-current="page">首頁</a><a href="wifi8.html">Wi-Fi 8</a><a href="wifi7.html">Wi-Fi 7</a><a href="wifi-sensing.html">Wi-Fi Sensing</a><a href="security.html">Security</a><a href="compare.html">6/7/8 比較</a></div>
   <div class="brand">Wi-Fi 標準技術手冊</div>
   <div class="sub">IEEE 802.11 學習筆記</div>
   <button class="menu-btn" id="menuBtn" aria-expanded="false">目錄</button>
@@ -27,9 +27,9 @@
 <main>
 <header class="hero">
   <h1>Wi-Fi 標準技術手冊</h1>
-  <p class="lead">把 IEEE 802.11 各世代標準整理成給系統設計工程師閱讀的導讀與規格速查。每個世代一個分頁，首頁提供全站目錄與更新日誌。</p>
+  <p class="lead">把 IEEE 802.11 各世代標準整理成給系統設計工程師閱讀的導讀與規格速查。</p>
   <div class="chips">
-    <span class="chip">Wi-Fi 8 · 802.11bn</span><span class="chip">Wi-Fi 7 · 802.11be</span><span class="chip">Wi-Fi Sensing · 802.11bf</span><span class="chip">繁體中文</span>
+    <span class="chip">Wi-Fi 8 · 802.11bn</span><span class="chip">Wi-Fi 7 · 802.11be</span><span class="chip">Wi-Fi Sensing · 802.11bf</span><span class="chip">Security · WPA3</span><span class="chip">繁體中文</span>
   </div>
 </header>
 
@@ -59,6 +59,12 @@
       <h3>Wi-Fi Sensing · 802.11bf</h3>
       <p>WLAN Sensing：角色、session、TB / non-TB 量測交換、SBP、CSI 回報與 DMG sensing，並附條文速查。</p>
       <span class="go">進入 Wi-Fi Sensing →</span>
+    </a>
+    <a class="card topic" href="security.html">
+      <span class="status">已上線</span>
+      <h3>Wi-Fi Security · WPA3</h3>
+      <p>WPA3-Personal 與 SAE：連線序列、Commit / Confirm 與金鑰推導、H2E、狀態機、部署模式、Transition Disable、SAE-PK 與 Wi-Fi 6E / 7 / 8 的安全限制。</p>
+      <span class="go">進入 Security →</span>
     </a>
     <div class="card topic soon">
       <span class="status wip">規劃中</span>
@@ -103,6 +109,19 @@
         <li><a href="wifi-sensing.html#dmg">DMG sensing</a></li>
         <li><a href="wifi-sensing.html#spec-bf">802.11bf 規格速查</a></li>
       </ol></div>
+    <div class="card"><b><a href="security.html">Wi-Fi Security · WPA3</a></b>
+      <ol>
+        <li><a href="security.html#why">為什麼要 SAE</a></li>
+        <li><a href="security.html#flow">連線全貌（序列圖）</a></li>
+        <li><a href="security.html#sae">SAE 協定細節</a></li>
+        <li><a href="security.html#fsm">SAE 狀態機</a></li>
+        <li><a href="security.html#akm">AKM 與金鑰長度</a></li>
+        <li><a href="security.html#modes">WPA3-Personal 模式</a></li>
+        <li><a href="security.html#trdisable">Transition Disable</a></li>
+        <li><a href="security.html#saepk">SAE-PK</a></li>
+        <li><a href="security.html#gen">頻段與世代限制</a></li>
+        <li><a href="security.html#impl">實作要點與已知攻擊</a></li>
+      </ol></div>
     <div class="card"><b><a href="compare.html">Wi-Fi 6 / 7 / 8 比較</a></b>
       <ol>
         <li><a href="compare.html#compare">規格並列比較表</a></li>
@@ -114,6 +133,13 @@
   <h2><span class="num">3</span>更新日誌</h2>
   <div class="timeline log">
     <div class="ev now"><div class="d">2026-11-22</div>
+      <div class="t">新增 Wi-Fi Security 分頁（WPA3-Personal / SAE）</div>
+      <ul>
+        <li>依 IEEE 802.11-2024 §12.4 與 Wi-Fi Alliance WPA3 Specification v4.0 整理 SAE：連線序列圖、Commit / Confirm、H2E、金鑰推導、狀態機、anti-clogging。</li>
+        <li>WPA3-Personal 的 Only / Transition / Compatibility 模式、Transition Disable、SAE-PK，以及 6 GHz、Wi-Fi 7（MLO）、Wi-Fi 8（Security Profile、SMD）的安全限制。</li>
+        <li>各頁導覽列加入 Security。</li>
+      </ul></div>
+    <div class="ev done"><div class="d">2026-11-22</div>
       <div class="t">新增 Wi-Fi Sensing（802.11bf）分頁</div>
       <ul>
         <li>依 802.11bf-2025 正式版整理：角色、session、TB / non-TB 量測交換、SBP、CSI 回報與 DMG sensing。</li>
@@ -150,6 +176,7 @@
   <h2><span class="num">4</span>關於與資料來源</h2>
   <div class="card">
     <ul>
+      <li>WPA3 / SAE 內容整理自 IEEE 802.11-2024 §12.4 與 Wi-Fi Alliance WPA3 Specification v4.0（WFA 文件，不含於本 repo）。</li>
       <li>802.11be、802.11bf 內容整理自 IEEE 802.11be-2024、802.11bf-2025 與 802.11-2024 原文；頁碼規則：PDF 頁 = 印刷頁 + 1。</li>
       <li>802.11bn 仍在 Draft 階段，內容整理自公開資訊與產業資料，細節會隨 Draft 變動。</li>
       <li>本站為學習輔助，涉及設計決策時請以官方標準與 Wi-Fi Alliance 認證規範為準。</li>

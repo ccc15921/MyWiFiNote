@@ -11,7 +11,7 @@
 <body>
 <div class="layout">
 <nav class="toc" id="toc">
-  <div class="sitenav"><a href="index.html">首頁</a><a href="wifi8.html">Wi-Fi 8</a><a href="wifi7.html">Wi-Fi 7</a><a href="wifi-sensing.html" class="cur" aria-current="page">Wi-Fi Sensing</a><a href="compare.html">6/7/8 比較</a></div>
+  <div class="sitenav"><a href="index.html">首頁</a><a href="wifi8.html">Wi-Fi 8</a><a href="wifi7.html">Wi-Fi 7</a><a href="wifi-sensing.html" class="cur" aria-current="page">Wi-Fi Sensing</a><a href="security.html">Security</a><a href="compare.html">6/7/8 比較</a></div>
   <div class="brand">Wi-Fi Sensing · 802.11bf</div>
   <div class="sub">WLAN Sensing 導讀與速查</div>
   <button class="menu-btn" id="menuBtn" aria-expanded="false">目錄</button>
@@ -191,7 +191,7 @@
   <table>
     <thead><tr><th>階段</th><th>AP 傳送</th><th>STA 傳送</th><th>重點規則</th></tr></thead>
     <tbody>
-      <tr><td>Polling</td><td>Sensing Polling Trigger</td><td>CTS-to-self（HE / EHT TB PPDU）</td><td>每個 RU 恰配一個 STA、不使用 UL MU-MIMO；無人回應則不進入後續階段；<code>More TF</code>=1 表示同一 window 還有額外 TB exchange</td></tr>
+      <tr><td>Polling</td><td>Sensing Polling Trigger</td><td>CTS-to-self（HE / EHT TB PPDU）</td><td>每個 RU 配一個 STA、不使用 UL MU-MIMO；無人回應則不進入後續階段；<code>More TF</code>=1 表示同一 window 還有額外 TB exchange</td></tr>
       <tr><td>NDPA sounding</td><td>Sensing NDPA + <b>SI2SR NDP</b></td><td>—</td><td>AP 為 sensing transmitter；BW ≤160 MHz 用 HE Ranging NDP，320 MHz 用 EHT Ranging NDP；NDPA 含 AID11=2044 的 STA Info（Partial TSF、Token）</td></tr>
       <tr><td>TF sounding<br>SR2SI variant</td><td>SR2SI Sounding Trigger</td><td>多個 STA 以 UL MU-MIMO 同時送 TB Ranging NDP（<b>SR2SI NDP</b>）</td><td>AP 為 sensing receiver；可重複觸發多次</td></tr>
       <tr><td>TF sounding<br>SR2SR variant（可選）</td><td>SR2SR Sounding Trigger</td><td>一個 non-AP STA 送 NDP，其餘 STA 與 AP 做量測</td><td>指定一個 Transmitter User Info 與一或多個 Receiver User Info；可選實作</td></tr>
