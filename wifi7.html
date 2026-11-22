@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wi-Fi 7 規格導讀</title>
+<meta name="description" content="IEEE 802.11be (EHT, Wi-Fi 7) 規格導讀與條文速查">
+<script>(function(){var t=null;try{t=new URLSearchParams(location.search).get("theme")}catch(e){}if(t!=="dark"&&t!=="light"){try{t=localStorage.getItem("wifi8-theme")}catch(e){}}if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t)})();</script>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<div class="layout">
+<nav class="toc" id="toc">
+  <div class="sitenav"><a href="index.html">首頁</a><a href="wifi8.html">Wi-Fi 8</a><a href="wifi7.html" class="cur" aria-current="page">Wi-Fi 7</a><a href="wifi-sensing.html">Wi-Fi Sensing</a><a href="compare.html">6/7/8 比較</a></div>
+  <div class="brand">Wi-Fi 7 · 802.11be</div>
+  <div class="sub">規格導讀與速查</div>
+  <button class="menu-btn" id="menuBtn" aria-expanded="false">目錄</button>
+  <ol>
+    <li><a href="#mlo">1. MLO：MLSR / EMLSR / EMLMR</a></li>
+    <li><a href="#twt">2. TWT / R-TWT</a></li>
+    <li><a href="#spec-be">3. 802.11be 規格速查</a></li>
+  </ol>
+  <button class="theme-btn" id="themeBtn">切換深 / 淺色</button>
+</nav>
+
+<main>
+<header class="hero">
+  <h1>Wi-Fi 7（IEEE 802.11be, EHT）<br>規格導讀與速查</h1>
+  <p class="lead">Wi-Fi 7 以 <b>Extremely High Throughput</b> 為目標：320 MHz、4096-QAM、MRU / Preamble Puncturing，以及最重要的 <b>Multi-Link Operation (MLO)</b>。Wi-Fi 8 的許多可靠度與低延遲機制都建立在這些基礎之上，本頁依 IEEE 802.11be-2024 原文整理。</p>
+  <div class="chips">
+    <span class="chip">IEEE 802.11be-2024</span><span class="chip">EHT</span>
+    <span class="chip">2.4 / 5 / 6 GHz</span><span class="chip">320 MHz · 4096-QAM</span><span class="chip">MLO</span>
+  </div>
+  <div class="tip"><b>閱讀建議：</b>先讀 MLO 與 TWT / R-TWT 兩章建立概念，再用最後一章「規格速查」搜尋各條文單位的摘要，需要細節時依頁碼回到原文 PDF。與 Wi-Fi 6 / 8 的並列比較見 <a href="compare.html">Wi-Fi 6 / 7 / 8 比較頁</a>。</div>
+</header>
+
+<section id="mlo">
+  <h2><span class="num">1</span>Wi-Fi 7 MLO 深入：MLSR / EMLSR / EMLMR（含 STR / NSTR）</h2>
+  <p class="intro">Wi-Fi 8 的許多可靠度與低延遲功能，都是建立在 Wi-Fi 7 的 Multi-Link Operation (MLO) 之上。用戶端（non-AP MLD）實際怎麼用多條 link，取決於它有幾顆 radio、以及開啟哪一種 multi-link 模式。本節依 IEEE 802.11be-2024 原文整理（頁碼為 PDF 頁）。</p>
+
+  <h3>1.1 先釐清名詞：MLSR 不是 spec 用語</h3>
+  <p>802.11be 規格中定義的是 <b>single-radio non-AP MLD</b> 與 <b>multi-radio non-AP MLD</b>（3.2，PDF p.63–65），以及兩種「增強」模式 <b>EMLSR</b>（35.3.17）與 <b>EMLMR</b>（35.3.18）。業界常說的 <b>MLSR</b>（Multi-Link Single Radio）指的是「沒有開啟 EMLSR 的 single-radio MLD」：與 AP MLD 建立多條 link，但同一時間只在一條 link 上收發，換 link 靠一般的省電狀態切換，沒有「多條 link 同時聽、收到誰就切到誰」的機制。</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>模式</th><th>硬體</th><th>聆聽（Listen）</th><th>收發資料</th><th>能力訊令</th><th>典型裝置</th></tr></thead>
+    <tbody>
+      <tr><td><b>MLSR</b><br><span style="color:var(--muted);font-size:.85em">single-radio MLD</span></td><td>1 組 radio</td><td>一次一條 link</td><td>一次一條 link；換 link 需經 power save 切換，延遲較大</td><td>Max Simultaneous Links = 0；EMLSR Support = 0</td><td>低成本 / IoT 用戶端</td></tr>
+      <tr><td class="hl">EMLSR</td><td>1 組主 radio + 多條 link 上的接收鏈（常見：每條 link 1 根天線聽）</td><td><b>多條 link 同時聽</b>（CCA + 收 initial Control frame）</td><td>收到 initial Control frame 後，把所有鏈路集中到該 link，<b>一次一條 link</b>但可用全部 spatial streams</td><td>EMLSR Support = 1；Max Simultaneous Links = 0（single-radio）</td><td>手機、筆電主流做法</td></tr>
+      <tr><td class="hl">EMLMR</td><td>多組 radio，可在 link 間挪用 TX/RX chain</td><td>多條 link 同時聽（initial frame 任何格式，只要 NSS 符合能力）</td><td>交換期間該 link 可升到 EMLMR NSS；交換結束恢復各 link 原本能力</td><td>EMLMR Support = 1（與 EMLSR Support 互斥）</td><td>高階用戶端</td></tr>
+      <tr><td><b>STR</b><br><span style="color:var(--muted);font-size:.85em">multi-radio</span></td><td>多組獨立 radio，隔離度足夠</td><td>各 link 獨立</td><td><b>多條 link 同時收發</b>，每條 link 獨立 EDCA</td><td>Max Simultaneous Links ≥ 1；NSTR Indication Bitmap = 0</td><td>AP MLD（規定必為 STR）、高階用戶端</td></tr>
+      <tr><td><b>NSTR</b><br><span style="color:var(--muted);font-size:.85em">multi-radio</span></td><td>多組 radio，但兩 link 頻率太近、自干擾</td><td>各 link 獨立</td><td>可同時 TX 或同時 RX，<b>但一條 TX 時另一條不能 RX</b></td><td>NSTR Indication Bitmap = 1；NSTR Link Pair Present = 1</td><td>5 GHz + 6 GHz 間隔太近的用戶端</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="tip"><b>選型直覺：</b>EMLSR 的價值在於「用一套 radio 的成本，拿到多 link 的通道接入機會（低延遲）」；STR 的價值在於「多 link 同時傳，提升吞吐」。手機多半選 EMLSR，因為省電、省面積，且 5/6 GHz 的隔離度在小尺寸機身難以做到 STR。</div>
+
+  <h3>1.2 EMLSR 運作流程</h3>
+  <figure>
+    <svg viewBox="0 0 860 250" role="img" aria-label="EMLSR 時序圖：兩條 link 同時聆聽，收到 initial Control frame 後切換到單一 link 收發">
+      <g font-size="12">
+        <text x="10" y="62" font-weight="700">Link 1</text><text x="10" y="78" class="muted" font-size="11">5 GHz</text>
+        <text x="10" y="152" font-weight="700">Link 2</text><text x="10" y="168" class="muted" font-size="11">6 GHz</text>
+        <line x1="70" y1="70" x2="850" y2="70" stroke="var(--line)"/><line x1="70" y1="160" x2="850" y2="160" stroke="var(--line)"/>
+        <!-- listening both -->
+        <rect x="75" y="52" width="130" height="36" rx="4" fill="none" stroke="var(--c1)" stroke-dasharray="5 4"/>
+        <text x="140" y="74" text-anchor="middle" class="muted">聆聽（1 RX chain）</text>
+        <rect x="75" y="142" width="130" height="36" rx="4" fill="none" stroke="var(--c1)" stroke-dasharray="5 4"/>
+        <text x="140" y="164" text-anchor="middle" class="muted">聆聽（1 RX chain）</text>
+        <!-- initial control frame on link2 -->
+        <rect x="210" y="132" width="120" height="46" rx="4" fill="var(--c2)"/>
+        <text x="270" y="152" text-anchor="middle" style="fill:#fff">MU-RTS / BSRP</text>
+        <text x="270" y="168" text-anchor="middle" style="fill:#fff" font-size="11">non-HT 6/12/24 Mb/s</text>
+        <rect x="300" y="132" width="30" height="46" fill="#000" opacity=".18"/>
+        <text x="315" y="200" text-anchor="middle" font-size="11" style="fill:var(--c2)">Padding ≥</text>
+        <text x="315" y="214" text-anchor="middle" font-size="11" style="fill:var(--c2)">Padding Delay</text>
+        <!-- CTS -->
+        <rect x="340" y="142" width="50" height="36" rx="4" fill="var(--c3)"/><text x="365" y="164" text-anchor="middle" style="fill:#fff">CTS</text>
+        <!-- data multi SS -->
+        <rect x="400" y="132" width="230" height="46" rx="4" fill="var(--c1)"/>
+        <text x="515" y="152" text-anchor="middle" style="fill:#fff">Data（可用全部 spatial streams）</text>
+        <text x="515" y="168" text-anchor="middle" style="fill:#fff" font-size="11">SIFS 後即需能收多 SS PPDU</text>
+        <rect x="640" y="142" width="40" height="36" rx="4" fill="var(--c3)"/><text x="660" y="164" text-anchor="middle" style="fill:#fff">BA</text>
+        <!-- link1 unavailable -->
+        <rect x="210" y="52" width="470" height="36" rx="4" fill="var(--muted)" opacity=".18"/>
+        <text x="445" y="74" text-anchor="middle" class="muted">不可收發（RX chain 已借到 Link 2），AP MLD 不得在此 link 傳給它</text>
+        <!-- transition delay -->
+        <rect x="690" y="52" width="50" height="126" fill="var(--c4)" opacity=".2"/>
+        <text x="715" y="232" text-anchor="middle" font-size="11" style="fill:var(--c4)">Transition Delay</text>
+        <!-- back to listening -->
+        <rect x="745" y="52" width="100" height="36" rx="4" fill="none" stroke="var(--c1)" stroke-dasharray="5 4"/><text x="795" y="74" text-anchor="middle" class="muted">聆聽</text>
+        <rect x="745" y="142" width="100" height="36" rx="4" fill="none" stroke="var(--c1)" stroke-dasharray="5 4"/><text x="795" y="164" text-anchor="middle" class="muted">聆聽</text>
+        <text x="270" y="30" text-anchor="middle" font-size="11" class="muted">① AP 送 initial Control frame</text>
+        <text x="515" y="30" text-anchor="middle" font-size="11" class="muted">② 單一 link 上完整 frame exchange</text>
+        <text x="760" y="30" text-anchor="middle" font-size="11" class="muted">③ 結束後回到多 link 聆聽</text>
+      </g>
+    </svg>
+    <figcaption>圖 5：EMLSR 典型時序（依 35.3.17，PDF p.567–572；範例見 Annex AH.15，PDF p.1015–1016）。</figcaption>
+  </figure>
+
+  <div class="grid g2">
+    <div class="card feat"><span class="tag">啟用 / 停用</span><h4>EML Operating Mode Notification 交換</h4>
+      <p>(Re)association 後 EMLSR <b>預設關閉</b>。non-AP MLD 送 EML OMN frame（EMLSR Mode = 1，EMLSR Link Bitmap 指定 EMLSR links）；AP 應在 <b>Transition Timeout</b> 內回送同內容的 EML OMN 確認。收到確認或 timeout 到期（先到者）即生效。停用流程相同（EMLSR Mode = 0）。</p>
+      <div class="sys"><b>細節：</b>timeout 從 AP 回 Ack 的 PPDU 結束時開始計時；只設單一 link bit 需 AP 宣告 EMLSR Enablement On One Link Support = 1（PDF p.567–569）。</div></div>
+    <div class="card feat"><span class="tag">AP 端限制</span><h4>Initial Control frame 規則</h4>
+      <p>AP 對 EMLSR 用戶端發起交換（group addressed 除外）時，必須先送 <b>MU-RTS Trigger 或 BSRP Trigger</b>，格式為 <b>non-HT / non-HT duplicate、6/12/24 Mb/s</b>；BSRP 的回應限 1 SS。Padding 長度須 ≥ 用戶端宣告的 EMLSR Padding Delay（多個 EMLSR 用戶端時取最大值）。</p>
+      <div class="sys"><b>為什麼：</b>聆聽時每條 link 可能只有 1 根 RX chain，只能可靠解低速 non-HT；padding 給用戶端時間把其他 chain 切過來（PDF p.570、p.572）。</div></div>
+    <div class="card feat"><span class="tag">交換期間</span><h4>單 link 獨佔</h4>
+      <p>回應 initial Control frame 後，用戶端只在該 link 收發，<b>不得在其他 EMLSR link 收發</b>；AP MLD 的其他 AP 也不得在其他 EMLSR link 傳給它。回應後 SIFS 起就必須能接收多 SS 的 PPDU。用戶端自己也可直接用 EDCA 發起 TXOP（不需 initial Control frame）。</p>
+      <div class="sys"><b>限制：</b>EMLSR links 上不得使用 dynamic SM power save（PDF p.568、p.571–572）。</div></div>
+    <div class="card feat"><span class="tag">結束判定</span><h4>何時回到聆聽</h4>
+      <p>以下任一成立即視為交換結束，經 <b>EMLSR Transition Delay</b> 後回到多 link 聆聽：在 <code>aSIFSTime + aSlotTime + aRxPHYStartDelay</code>（aRxPHYStartDelay = 20 µs）內沒收到 PHY-RXSTART；或收到的 PPDU 中沒有給自己的 frame；或沒有在 SIFS 後回應需立即回應的 frame。用戶端自己發起的 TXOP 則在 TXOP 結束後回到聆聽。</p>
+      <div class="sys"><b>AP 對策：</b>若沒收到回應且還想繼續，AP 應在 TXNAV 到期前再送一次 initial Control frame（PDF p.571–572）。</div></div>
+  </div>
+
+  <h3>1.3 EML Capabilities 參數（Basic Multi-Link element）</h3>
+  <p>位於 Basic Multi-Link element 的 Common Info 欄位（9.4.2.322.2，PDF p.236–239）。Padding Delay / Transition Delay 由 non-AP MLD 宣告（AP 送出時為 reserved）；Transition Timeout 由 AP MLD 宣告。</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>欄位（bits）</th><th>編碼值 → 數值</th><th>誰宣告</th><th>設計意義</th></tr></thead>
+    <tbody>
+      <tr><td>EMLSR Support (B0)</td><td>1 = 支援</td><td>AP / non-AP</td><td>non-AP MLD 不可同時宣告 EMLSR 與 EMLMR</td></tr>
+      <tr><td>EMLSR Padding Delay (B1–B3)</td><td>0→0 µs、1→32、2→64、3→128、4→256 µs</td><td>non-AP</td><td>RX chain 從聆聽到可收多 SS 的準備時間；越大 AP 每次 initial Control frame 的額外開銷越大</td></tr>
+      <tr><td>EMLSR Transition Delay (B4–B6)</td><td>0→0 µs、1→16、2→32、3→64、4→128、5→256 µs</td><td>non-AP</td><td>交換結束後切回多 link 聆聽所需時間；期間 AP 不應對它發起新交換</td></tr>
+      <tr><td>EMLMR Support (B7)</td><td>1 = 支援</td><td>AP / non-AP</td><td>EMLMR 模式時 B1–B6 改為 EMLMR Padding / Transition Delay（0/32/64/128/256 µs）</td></tr>
+      <tr><td>Transition Timeout (B11–B14)</td><td>0→0、1→128 µs、2→256 µs、3→512 µs、4→1 TU、5→2、6→4、7→8、8→16、9→32、10→64 TU</td><td>AP</td><td>EML OMN 模式切換的確認等待上限</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p style="font-size:.9rem;color:var(--muted)">EMLSR Padding / Transition Delay 可在關聯後以 EML OMN 的 <b>EMLSR Parameter Update</b> 欄位更新（9.4.1.78，PDF p.198–199）；EML OMN frame 本體見 9.6.38.8（PDF p.308–309）。</p>
+
+  <h3>1.4 EMLMR 與 EMLSR 的差異</h3>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>項目</th><th>EMLSR（35.3.17）</th><th>EMLMR（35.3.18）</th></tr></thead>
+    <tbody>
+      <tr><td>Initial frame</td><td>限 MU-RTS / BSRP Trigger，non-HT 6/12/24 Mb/s</td><td>任何 frame exchange 皆可，只要 PPDU 的 NSS 符合接收能力並滿足 padding（Trigger padding 或 A-MPDU delimiter padding）</td></tr>
+      <tr><td>交換期間能力</td><td>依 spatial stream 能力，SIFS 後可收多 SS</td><td>收發 NSS 上限由 <b>EMLMR Supported MCS And NSS Set</b> 宣告</td></tr>
+      <tr><td>交換結束後</td><td>回到多 link 聆聽</td><td>恢復各 link 原本的 per-link NSS 能力（EHT Capabilities / OM Control）</td></tr>
+      <tr><td>省電狀態</td><td>EMLSR links 的 STA 在啟用後轉 active mode</td><td>每個 EMLMR STA 獨立維持自己的 PM mode 與 awake/doze</td></tr>
+      <tr><td>多 link 互斥</td><td>交換期間其他 EMLSR link 不收發</td><td>AP MLD 與某 EMLMR STA 交換未完成時，其他 link 上的 AP / EMLMR STA 都不得發起交換</td></tr>
+      <tr><td>其他限制</td><td>不得用 dynamic SM power save</td><td>EMLMR STA 不得為 20 MHz-only STA</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p style="font-size:.9rem;color:var(--muted)">出處：PDF p.572–575；EMLMR 範例見 Annex AH.16。</p>
+
+  <h3>1.5 STR / NSTR：multi-radio 的另一條路</h3>
+  <div class="grid g2">
+    <div class="card"><b>定義（3.2，PDF p.63–65）</b><br>
+      <b>NSTR link pair</b>：MLD 在一條 link 傳送時，另一條 link 無法滿足 36.3.21 的接收機要求（自干擾）。<b>STR link pair</b>：不是 NSTR 的 link pair。<br><br>
+      AP MLD（非 NSTR mobile AP MLD）所有 link pair <b>必須是 STR</b>；2.4 GHz 與 5/6 GHz 的 link pair 一律視為 STR（NSTR bit 必為 0）。</div>
+    <div class="card"><b>NSTR 的通道接入規則（35.3.16.4，PDF p.559–560）</b><br>
+      拿到 EDCA TXOP 時，若傳送會干擾同一 MLD 在另一條 NSTR link 上的接收，可以<b>選擇不傳</b>、重新 backoff，或把該 AC 佇列視為空的。另有 <b>PPDU end time alignment</b>（35.3.16.5）、<b>start time sync PPDUs</b>（35.3.16.6）讓兩條 link 同時開始 / 結束傳送，以及 PIFS 內錯誤復原（35.3.16.7）。</div>
+    <div class="card"><b>能力宣告（35.3.16.2，PDF p.557–559）</b><br>
+      <code>Maximum Number Of Simultaneous Links</code>：AP MLD = AP 數 − 1；single-radio non-AP MLD（含 EMLSR）= 0；multi-radio 且要求多 link 時 ≥ 1。<code>NSTR Indication Bitmap</code> 逐 link pair 標示 STR(0)/NSTR(1)。<code>Frequency Separation For STR</code> 可建議做 STR 所需的最小頻率間隔。</div>
+    <div class="card"><b>動態變化</b><br>
+      AP 換 channel 可能讓原本 STR 的 link pair 變成 NSTR。支援 <code>NSTR Status Update</code> 的 MLD 可送 Multi-Link Operation Update Request（Operation Update Type = 4）回報新的 STR/NSTR 狀態。NSTR mobile AP MLD（手機熱點）另見 35.3.19（PDF p.575–578）。</div>
+  </div>
+
+  <h3>1.6 系統設計重點</h3>
+  <div class="grid g3">
+    <div class="card feat"><span class="tag">RF / 基頻</span><h4>Chain 切換時間</h4><p>EMLSR Padding Delay 與 Transition Delay 直接反映 LO/PLL 重設、AGC 收斂、RX chain 重新路由的時間。宣告值越小，AP 開銷越小、延遲越低，但硬體要求越高。</p></div>
+    <div class="card feat"><span class="tag">AP 排程</span><h4>EMLSR 用戶端成本</h4><p>每次 AP 主動發起都要多付一個低速 MU-RTS/BSRP + padding；AP 需追蹤用戶端「正在哪條 link」，且交換期間其他 link 上對它的流量要暫停或改道。</p></div>
+    <div class="card feat"><span class="tag">共存</span><h4>In-Device Coexistence</h4><p>EML OMN 的 In-Device Coexistence Activities bit 讓 AP 知道用戶端在 EMLSR links 上有 BT/LTE 等共存活動，AP 可把無回應視為共存事件，而非鏈路變差（PDF p.568、p.570）。</p></div>
+    <div class="card feat"><span class="tag">廣播 / Beacon</span><h4>Group addressed 與 TBTT</h4><p>EMLSR links 上的 group addressed frames 依 35.3.15 緩衝傳送；用戶端可在 TBTT 收 Beacon。NSTR 用戶端應在另一 link 的 TBTT 前結束 TXOP。</p></div>
+    <div class="card feat"><span class="tag">Sounding</span><h4>Beamforming 回饋</h4><p>上述 EMLSR 規則同樣適用 sounding 序列；Annex AH 有 EMLSR 下的 non-TB / TB sounding 範例（Figure AH-25～AH-27，PDF p.1016）。</p></div>
+    <div class="card feat"><span class="tag">Wi-Fi 8</span><h4>往 802.11bn 的延伸</h4><p>802.11bn 討論中包含 EMLSR 的強化（例如降低切換開銷、更彈性的 link 使用），以及 Seamless Roaming 借用 MLD 架構跨 AP。細節以 TGbn 最新 Draft 為準。</p></div>
+  </div>
+</section>
+
+<section id="twt">
+  <h2><span class="num">2</span>TWT / R-TWT：從省電排程到低延遲保護</h2>
+  <p class="intro">TWT（Target Wake Time）在 802.11ah 引入、Wi-Fi 6（HE）普及，用來讓 STA 依約定時間醒來交換資料。Wi-Fi 7 的 R-TWT（Restricted TWT）在 broadcast TWT 之上加上「通道接入保護」，把 TWT 從省電工具變成低延遲流量的資源保留機制；Wi-Fi 8 的 Co-RTWT 再把它延伸到多 AP。頁碼：base = 802.11-2024 PDF 頁、be = 802.11be-2024 PDF 頁。</p>
+
+  <h3>2.1 TWT 基本觀念（802.11-2024 10.46、26.8）</h3>
+  <figure>
+    <svg viewBox="0 0 860 170" role="img" aria-label="TWT 週期性 service period 示意">
+      <g font-size="12">
+        <line x1="40" y1="90" x2="850" y2="90" stroke="var(--line)" stroke-width="2"/>
+        <text x="40" y="150" class="muted">TSF →</text>
+        <rect x="80" y="62" width="110" height="56" rx="4" fill="var(--c1)"/>
+        <text x="135" y="86" text-anchor="middle" style="fill:#fff">TWT SP</text>
+        <text x="135" y="104" text-anchor="middle" style="fill:#fff" font-size="11">醒著交換資料</text>
+        <rect x="190" y="78" width="210" height="24" fill="var(--muted)" opacity=".15"/>
+        <text x="295" y="95" text-anchor="middle" class="muted">doze（省電）</text>
+        <rect x="400" y="62" width="110" height="56" rx="4" fill="var(--c1)"/>
+        <text x="455" y="86" text-anchor="middle" style="fill:#fff">TWT SP</text>
+        <rect x="510" y="78" width="210" height="24" fill="var(--muted)" opacity=".15"/>
+        <text x="615" y="95" text-anchor="middle" class="muted">doze</text>
+        <rect x="720" y="62" width="110" height="56" rx="4" fill="var(--c1)"/>
+        <text x="775" y="86" text-anchor="middle" style="fill:#fff">TWT SP</text>
+        <path d="M80 40 L400 40" stroke="var(--c4)" stroke-width="1.5" marker-start="url(#tw)" marker-end="url(#tw)"/>
+        <text x="240" y="32" text-anchor="middle" style="fill:var(--c4)">TWT Wake Interval = Mantissa × 2^Exponent µs</text>
+        <path d="M80 135 L190 135" stroke="var(--c2)" stroke-width="1.5" marker-start="url(#tw2)" marker-end="url(#tw2)"/>
+        <text x="200" y="140" style="fill:var(--c2)" font-size="11">Nominal Minimum TWT Wake Duration（單位 256 µs 或 1 TU）</text>
+        <text x="80" y="58" font-size="11" class="muted">Target Wake Time</text>
+        <defs>
+          <marker id="tw" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10z" fill="var(--c4)"/></marker>
+          <marker id="tw2" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10z" fill="var(--c2)"/></marker>
+        </defs>
+      </g>
+    </svg>
+    <figcaption>圖 6：TWT 參數的意義（base 9.4.2.198，PDF p.1358–1369）。</figcaption>
+  </figure>
+  <div class="grid g2">
+    <div class="card feat"><span class="tag">角色與協商</span><h4>Individual TWT</h4>
+      <p>STA（TWT requesting STA）與 AP（TWT responding STA）一對一協商。請求端用 <b>Request / Suggest / Demand TWT</b>，回應端用 <b>Accept / Alternate / Dictate / Reject TWT</b>；只有 Accept 才建立協議。每對 STA 最多 <b>8 個</b>協議（TWT Flow Identifier 3 bits）。可在 (Re)Association 時一起協商。</p>
+      <div class="sys"><b>出處：</b>base 10.46.1（PDF p.2354–2359）、26.8.2（PDF p.4054–4058）。</div></div>
+    <div class="card feat"><span class="tag">一對多</span><h4>Broadcast TWT</h4>
+      <p>AP（TWT scheduling AP）在 <b>Beacon</b> 的 broadcast TWT element 宣告排程，以 &lt;Broadcast TWT ID, AP MAC&gt; 識別；ID 0 適用所有 scheduled STA。用 Negotiation Type=2 廣告、=3 加入 / 退出成員。<b>Broadcast TWT Persistence</b> 表示排程還會存在幾個 TBTT，配合 Alternate / Reject 預告參數變更或終止。</p>
+      <div class="sys"><b>出處：</b>base 26.8.3（PDF p.4058–4068）。R-TWT 就是建立在 broadcast TWT 上。</div></div>
+  </div>
+  <div class="tbl-wrap" style="margin-top:14px">
+  <table>
+    <thead><tr><th>變體 / 欄位</th><th>意義</th><th>系統設計重點</th></tr></thead>
+    <tbody>
+      <tr><td>Implicit / Explicit</td><td>Implicit：下一個 SP = 目前 SP + Wake Interval（HE 規定 Implicit=1）。Explicit：每次由回應端告知 Next TWT。</td><td>Implicit 讓 STA 可自行計算，韌體只需維護 TSF 對齊</td></tr>
+      <tr><td>Announced / Unannounced（Flow Type）</td><td>Announced：STA 須先送 PS-Poll / QoS Null 等表示醒了，AP 才送資料。Unannounced：AP 假設 STA 在 SP 開始時已醒。</td><td>Unannounced 延遲較低，但 STA 晚醒會掉資料</td></tr>
+      <tr><td>Trigger-enabled（Trigger=1）</td><td>AP 必須在每個 SP 內排程 Trigger frame，STA 以 HE/EHT TB PPDU 上行；建議 SP 開始時先收 BSR。</td><td>上行可預測、配合 OFDMA；AP 排程器需在 SP 開頭保留 Trigger</td></tr>
+      <tr><td>TWT Protection</td><td>SP 內的 TXOP 需以 NAV 保護（(MU-)RTS/CTS 或 CTS-to-self）。</td><td>降低隱藏節點干擾，但增加開銷</td></tr>
+      <tr><td>TWT Required（HE Operation）</td><td>AP 要求支援 TWT 的 STA 必須協商 individual 或加入 broadcast TWT（例如 AP 自己要省電時）。</td><td>適合電池供電的 mobile AP</td></tr>
+      <tr><td>TWT Information frame</td><td>暫停（不帶 Next TWT）或恢復（帶 Next TWT）協議；Flexible TWT 可指定任意下一次喚醒時間。</td><td>流量突發 / 閒置時不用 teardown 重建</td></tr>
+      <tr><td>SP 結束條件</td><td>STA 須醒到 AdjustedMinimumTWTWakeDuration 或偵測到 termination event（EOSP=1、More Data=0、More TF=0 的 Trigger 等）。</td><td>韌體的 doze 決策點；見 base 26.8.5（PDF p.4072–4073）</td></tr>
+      <tr><td>Protected TWT</td><td>雙方都支援時，改用 Protected TWT Setup / Teardown / Information frames，且不得使用 BAT/TACK/STACK。</td><td>防止 TWT 協議被偽造拆除</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>2.2 R-TWT（Restricted TWT，802.11be 35.8）</h3>
+  <p>R-TWT 的目標是「為延遲敏感流量保留一段<b>乾淨</b>的時間」。它沿用 broadcast TWT 的建立流程，但 TWT element 帶 <b>Restricted TWT Parameter Set</b>，並對 BSS 內所有支援 R-TWT 的 STA 加上通道接入限制。</p>
+  <figure>
+    <svg viewBox="0 0 860 220" role="img" aria-label="R-TWT SP 保護機制示意">
+      <g font-size="12">
+        <line x1="40" y1="200" x2="850" y2="200" stroke="var(--line)" stroke-width="2"/>
+        <rect x="430" y="30" width="300" height="160" fill="var(--c3)" opacity=".12" stroke="var(--c3)"/>
+        <text x="580" y="50" text-anchor="middle" font-weight="700" style="fill:var(--c3)">R-TWT SP</text>
+        <text x="580" y="66" text-anchor="middle" font-size="11" style="fill:var(--c3)">先送 R-TWT TID 流量（DL / UL）</text>
+        <line x1="430" y1="20" x2="430" y2="200" stroke="var(--c3)" stroke-dasharray="4 3"/>
+        <text x="430" y="16" text-anchor="middle" font-size="11" style="fill:var(--c3)">SP 開始</text>
+        <!-- non-member STA TXOP ends before -->
+        <text x="50" y="96" font-weight="700">非成員 EHT STA</text>
+        <rect x="170" y="80" width="230" height="26" rx="4" fill="var(--c1)"/>
+        <text x="285" y="98" text-anchor="middle" style="fill:#fff">TXOP（必須在 SP 前結束）</text>
+        <rect x="400" y="80" width="30" height="26" fill="var(--muted)" opacity=".25"/>
+        <text x="460" y="125" font-size="11" class="muted">時間不夠完成交換 → 以目前 CW 重新 backoff（不加倍、不計重傳）</text>
+        <!-- legacy -->
+        <text x="50" y="160" font-weight="700">舊 STA（無 R-TWT）</text>
+        <rect x="430" y="146" width="40" height="26" fill="var(--c2)"/>
+        <text x="480" y="164" font-size="11" style="fill:var(--c2)">Quiet interval 1 TU（與 SP 同時開始）→ 讓舊 STA 在 SP 開頭靜默</text>
+        <!-- member -->
+        <text x="50" y="50" font-weight="700">成員 STA / AP</text>
+        <rect x="440" y="76" width="120" height="26" rx="4" fill="var(--c3)"/>
+        <text x="500" y="94" text-anchor="middle" style="fill:#fff">Trigger → UL</text>
+        <rect x="570" y="76" width="120" height="26" rx="4" fill="var(--c3)"/>
+        <text x="630" y="94" text-anchor="middle" style="fill:#fff">DL 低延遲</text>
+      </g>
+    </svg>
+    <figcaption>圖 7：R-TWT SP 的保護方式（be 35.8.4，PDF p.620–621）。</figcaption>
+  </figure>
+  <div class="grid g2">
+    <div class="card feat"><span class="tag">建立</span><h4>Membership setup（35.8.2，be p.618–619）</h4>
+      <p>依 base 26.8.3 的 broadcast TWT 流程加入，但 TWT element 帶 Restricted TWT Parameter Set。<b>Restricted TWT Traffic Info</b> 以 <b>DL / UL TID Bitmap</b> 指定哪些 TID 屬延遲敏感流量（R-TWT TIDs），且這些 TID 必須透過 TTLM 映射到該 link。AP 應設 Trigger=1。STA 可再用 SCS 送 <b>QoS Characteristics</b>（延遲界限、服務區間等）作為 AP 排程依據。</p>
+      <div class="sys"><b>注意：</b>若 TTLM 更新後 R-TWT TIDs 都不再映射到該 link，membership 自動視為拆除。</div></div>
+    <div class="card feat"><span class="tag">廣告</span><h4>Announcement（35.8.3，be p.619–620）</h4>
+      <p>只要有 membership，AP 就必須在 broadcast TWT element 中宣告 R-TWT 排程。<b>Restricted TWT Schedule Info</b>：<code>0</code> 閒置（無成員或全部暫停）、<code>1</code> 可加入、<code>2</code> 已滿、<code>3</code> 代表同一 multiple BSSID / co-hosted BSSID 組內其他 BSS 的排程（Broadcast TWT ID = 31）。STA 不應請求加入 =2 的排程，且不得加入 =3 的排程。</p>
+      <div class="sys"><b>為什麼要 3：</b>讓同一實體 AP 上的其他 BSS 的 STA 也知道要避開這段時間。</div></div>
+    <div class="card feat"><span class="tag">關鍵</span><h4>通道接入規則（35.8.4.1，be p.620–621）</h4>
+      <p><b>所有</b>支援 R-TWT 的 non-AP EHT STA（不論是否為成員）當 TXOP holder 時，必須讓 TXOP 在任何 active R-TWT SP 開始前結束；傳送前若時間不夠，要以目前 CW[AC] 重新 backoff（不推進 CW、不影響重傳計數）。AP 的 TXOP 只有在用來傳 R-TWT DL TID 或觸發 R-TWT UL TID 時才能延續進 SP。</p>
+      <div class="sys"><b>MLD 細節：</b>若成員 STA 屬 NSTR / EMLSR / EMLMR links，另一條 link 上的交換需提早 T 結束；T = 0（NSTR）、EMLSR Transition Delay、或 EMLMR Transition Delay。</div></div>
+    <div class="card feat"><span class="tag">舊裝置</span><h4>Quiet interval 與交付順序（35.8.4.2、35.8.5，be p.621–622）</h4>
+      <p>AP 可為每個 R-TWT SP 排一個 <b>1 TU 的 overlapping quiet interval</b>，與 SP 同時開始，讓不懂 R-TWT 的舊 STA 在 SP 開頭靜默；EHT STA 可忽略它。SP 內必須<b>先傳 R-TWT TIDs 的 QoS Data</b>；trigger-enabled SP 中 AP 要先觸發成員，成員組 A-MPDU 時也要先放 R-TWT UL TIDs。</p>
+      <div class="sys"><b>限制：</b>每個 R-TWT SP 最多只能重疊一個 quiet interval；正在傳的 Beacon 可延續進 SP。</div></div>
+  </div>
+
+  <h3>2.3 STA ↔ AP 如何建立 TWT / R-TWT：交換的封包</h3>
+  <p>TWT 協商<b>不需要新的握手協定</b>：能力在 Beacon 與 (Re)Association 中交換，協議本身用一對 <b>TWT Setup</b> Action frame（請求 / 回應）建立，兩個 frame 都帶 <b>TWT element</b>，各自由對方回 Ack。Individual TWT 與 broadcast TWT / R-TWT 用的是同一種 frame，差別只在 TWT element 的 <b>Negotiation Type</b> 與參數集格式。</p>
+
+  <figure>
+    <svg viewBox="0 0 860 500" role="img" aria-label="Individual TWT 建立流程時序圖">
+      <defs>
+        <marker id="sq1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--c1)"/></marker>
+        <marker id="sq2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10z" fill="var(--c2)"/></marker>
+        <marker id="sq4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--c4)"/></marker>
+        <marker id="sqm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--muted)"/></marker>
+      </defs>
+      <g font-size="12">
+        <rect x="40" y="8" width="180" height="34" rx="6" fill="none" stroke="var(--line)"/>
+        <text x="130" y="30" text-anchor="middle" font-weight="700">non-AP STA（requesting）</text>
+        <rect x="640" y="8" width="180" height="34" rx="6" fill="none" stroke="var(--line)"/>
+        <text x="730" y="30" text-anchor="middle" font-weight="700">AP（responding）</text>
+        <line x1="130" y1="42" x2="130" y2="490" stroke="var(--line)" stroke-dasharray="3 3"/>
+        <line x1="730" y1="42" x2="730" y2="490" stroke="var(--line)" stroke-dasharray="3 3"/>
+
+        <line x1="730" y1="80" x2="132" y2="80" stroke="var(--c4)" stroke-width="1.6" marker-end="url(#sq4)"/>
+        <text x="430" y="73" text-anchor="middle" font-weight="700" style="fill:var(--c4)">Beacon / Probe Response</text>
+        <text x="430" y="96" text-anchor="middle" font-size="11" class="muted">HE Capabilities：TWT Responder Support=1 ・ HE Operation：TWT Required（AP 要求一定要用 TWT 時=1）</text>
+
+        <line x1="130" y1="135" x2="728" y2="135" stroke="var(--c4)" stroke-width="1.6" marker-end="url(#sq4)"/>
+        <text x="430" y="128" text-anchor="middle" font-weight="700" style="fill:var(--c4)">(Re)Association Request</text>
+        <text x="430" y="151" text-anchor="middle" font-size="11" class="muted">HE Capabilities：TWT Requester Support=1（＋可選：直接夾帶 TWT element 請求）</text>
+
+        <line x1="730" y1="190" x2="132" y2="190" stroke="var(--c4)" stroke-width="1.6" marker-end="url(#sq4)"/>
+        <text x="430" y="183" text-anchor="middle" font-weight="700" style="fill:var(--c4)">(Re)Association Response</text>
+        <text x="430" y="206" text-anchor="middle" font-size="11" class="muted">請求有帶 TWT element 時 AP「應」回 TWT element；沒回就在關聯後另送 TWT Setup</text>
+
+        <line x1="40" y1="222" x2="820" y2="222" stroke="var(--line)"/>
+        <text x="430" y="236" text-anchor="middle" font-size="11" class="muted">── 關聯完成後隨時可協商；每個 Flow ID 一個協議，最多 8 個 ──</text>
+
+        <line x1="130" y1="270" x2="728" y2="270" stroke="var(--c1)" stroke-width="2" marker-end="url(#sq1)"/>
+        <text x="430" y="263" text-anchor="middle" font-weight="700" style="fill:var(--c1)">① TWT Setup（TWT Request=1）</text>
+        <text x="430" y="286" text-anchor="middle" font-size="11" class="muted">Dialog Token≠0 ・ Negotiation Type=0 ・ Setup Command = Request / Suggest / Demand ・ Flow ID</text>
+        <text x="430" y="300" text-anchor="middle" font-size="11" class="muted">Target Wake Time ・ Min Wake Duration ・ Wake Interval ・ Trigger ・ Implicit=1 ・ Flow Type（announced?）</text>
+
+        <line x1="730" y1="320" x2="132" y2="320" stroke="var(--muted)" stroke-width="1.2" marker-end="url(#sqm)"/>
+        <text x="430" y="315" text-anchor="middle" font-size="11" class="muted">Ack</text>
+
+        <line x1="730" y1="365" x2="132" y2="365" stroke="var(--c1)" stroke-width="2" marker-end="url(#sq1)"/>
+        <text x="430" y="358" text-anchor="middle" font-weight="700" style="fill:var(--c1)">② TWT Setup（TWT Request=0）</text>
+        <text x="430" y="381" text-anchor="middle" font-size="11" class="muted">Dialog Token = 照抄 ① ・ Setup Command = Accept / Alternate / Dictate / Reject ・ 最終 TWT 參數與 Flow ID</text>
+
+        <line x1="130" y1="402" x2="728" y2="402" stroke="var(--muted)" stroke-width="1.2" marker-end="url(#sqm)"/>
+        <text x="430" y="397" text-anchor="middle" font-size="11" class="muted">Ack</text>
+
+        <rect x="150" y="414" width="560" height="34" rx="5" fill="var(--c1)" opacity=".1" stroke="var(--c1)"/>
+        <text x="430" y="428" text-anchor="middle" font-size="11">Accept → 協議成立（以回應的 Flow ID 為準），STA 在 PS mode 下可 doze 到下一個 TWT</text>
+        <text x="430" y="442" text-anchor="middle" font-size="11">Alternate / Dictate → STA 修改參數重送 ① ・ Reject → 不建立</text>
+
+        <line x1="132" y1="472" x2="728" y2="472" stroke="var(--c2)" stroke-width="1.6" marker-start="url(#sq2)" marker-end="url(#sq2)"/>
+        <text x="430" y="465" text-anchor="middle" font-weight="700" style="fill:var(--c2)">之後任一方：TWT Information（暫停 / 恢復）・ TWT Teardown（Flow ID、Negotiation Type=0）</text>
+      </g>
+    </svg>
+    <figcaption>圖 7a：Individual TWT 建立流程（base 10.46.1 PDF p.2355、26.8.2 PDF p.4054；frame 格式 9.6.24.8–9.6.24.9 PDF p.1816–1818）。</figcaption>
+  </figure>
+
+  <figure>
+    <svg viewBox="0 0 860 560" role="img" aria-label="R-TWT membership 建立流程時序圖">
+      <defs>
+        <marker id="sr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--c2)"/></marker>
+        <marker id="sr3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--c3)"/></marker>
+        <marker id="sr4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--c4)"/></marker>
+        <marker id="srm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--muted)"/></marker>
+      </defs>
+      <g font-size="12">
+        <rect x="40" y="8" width="180" height="34" rx="6" fill="none" stroke="var(--line)"/>
+        <text x="130" y="30" text-anchor="middle" font-weight="700">EHT STA（R-TWT scheduled）</text>
+        <rect x="640" y="8" width="180" height="34" rx="6" fill="none" stroke="var(--line)"/>
+        <text x="730" y="30" text-anchor="middle" font-weight="700">EHT AP（R-TWT scheduling）</text>
+        <line x1="130" y1="42" x2="130" y2="550" stroke="var(--line)" stroke-dasharray="3 3"/>
+        <line x1="730" y1="42" x2="730" y2="550" stroke="var(--line)" stroke-dasharray="3 3"/>
+
+        <line x1="730" y1="80" x2="132" y2="80" stroke="var(--c4)" stroke-width="1.6" marker-end="url(#sr4)"/>
+        <text x="430" y="73" text-anchor="middle" font-weight="700" style="fill:var(--c4)">Beacon（週期性廣告排程）</text>
+        <text x="430" y="96" text-anchor="middle" font-size="11" class="muted">EHT Capabilities：Restricted TWT Support=1 ・ TWT element：Negotiation Type=2（廣告）</text>
+        <text x="430" y="110" text-anchor="middle" font-size="11" class="muted">Restricted TWT Parameter Set：Recommendation=4、Schedule Info 0/1/2(/3)、Broadcast TWT ID、TWT、Interval、Duration</text>
+
+        <line x1="130" y1="150" x2="728" y2="150" stroke="var(--c4)" stroke-width="1.6" marker-end="url(#sr4)"/>
+        <text x="430" y="143" text-anchor="middle" font-weight="700" style="fill:var(--c4)">(Re)Association Request</text>
+        <text x="430" y="166" text-anchor="middle" font-size="11" class="muted">EHT Capabilities：Restricted TWT Support=1 ・ HE Capabilities：Broadcast TWT Support=1</text>
+
+        <line x1="730" y1="205" x2="132" y2="205" stroke="var(--c4)" stroke-width="1.6" marker-end="url(#sr4)"/>
+        <text x="430" y="198" text-anchor="middle" font-weight="700" style="fill:var(--c4)">(Re)Association Response</text>
+        <text x="430" y="221" text-anchor="middle" font-size="11" class="muted">AP 有 R-TWT 排程且 STA 宣告支援 → 帶 TWT element（排程資訊）</text>
+
+        <line x1="130" y1="260" x2="728" y2="260" stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#srm)"/>
+        <text x="430" y="253" text-anchor="middle" font-weight="700" class="muted">（可選）SCS Request</text>
+        <text x="430" y="276" text-anchor="middle" font-size="11" class="muted">QoS Characteristics element：TID、Direction、延遲界限、服務區間等（35.17）→ AP 可作為排程參考</text>
+        <line x1="730" y1="296" x2="132" y2="296" stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#srm)"/>
+        <text x="430" y="291" text-anchor="middle" font-size="11" class="muted">（可選）SCS Response</text>
+
+        <line x1="130" y1="345" x2="728" y2="345" stroke="var(--c3)" stroke-width="2" marker-end="url(#sr3)"/>
+        <text x="430" y="338" text-anchor="middle" font-weight="700" style="fill:var(--c3)">① TWT Setup（TWT Request=1）— 申請加入</text>
+        <text x="430" y="361" text-anchor="middle" font-size="11" class="muted">Negotiation Type=3 ・ Request / Suggest / Demand ・ Broadcast TWT ID=k ・ Recommendation=4</text>
+        <text x="430" y="375" text-anchor="middle" font-size="11" class="muted">Traffic Info Present=1 ・ DL / UL TID Bitmap（必須是已用 TTLM 映射到這條 link 的 TID）</text>
+
+        <line x1="730" y1="415" x2="132" y2="415" stroke="var(--c3)" stroke-width="2" marker-end="url(#sr3)"/>
+        <text x="430" y="408" text-anchor="middle" font-weight="700" style="fill:var(--c3)">② TWT Setup（TWT Request=0）— 回覆</text>
+        <text x="430" y="431" text-anchor="middle" font-size="11" class="muted">Negotiation Type=3 ・ Accept TWT ・ Trigger=1（建議）・ Traffic Info → 確定 R-TWT DL / UL TIDs</text>
+
+        <rect x="150" y="446" width="560" height="34" rx="5" fill="var(--c3)" opacity=".1" stroke="var(--c3)"/>
+        <text x="430" y="460" text-anchor="middle" font-size="11">成為排程 k 的成員；Beacon 中該排程的 Schedule Info 變為 1（active）</text>
+        <text x="430" y="474" text-anchor="middle" font-size="11">BSS 內所有 R-TWT 能力 STA 從此要在每個 SP 前結束 TXOP</text>
+
+        <line x1="130" y1="520" x2="728" y2="520" stroke="var(--c2)" stroke-width="1.6" marker-end="url(#sr2)"/>
+        <text x="430" y="513" text-anchor="middle" font-weight="700" style="fill:var(--c2)">退出：TWT Teardown（Negotiation Type=3、Broadcast TWT ID=k）</text>
+        <text x="430" y="536" text-anchor="middle" font-size="11" class="muted">或 TWT Setup（Negotiation Type=3、Reject TWT）・ Teardown All TWT=1 退出全部 ・ TTLM 把 R-TWT TIDs 全移走也視同拆除</text>
+      </g>
+    </svg>
+    <figcaption>圖 7b：R-TWT membership 建立流程（be 35.8.1–35.8.3 PDF p.618–620、9.4.2.198 PDF p.222–227；base 26.8.3.3 PDF p.4064–4065）。Ack 省略未畫。</figcaption>
+  </figure>
+
+  <h4>用到的 frame 一覽</h4>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Frame</th><th>類型</th><th>Frame body 內容</th><th>在流程中的用途</th></tr></thead>
+    <tbody>
+      <tr><td>Beacon / Probe Response</td><td>Management</td><td>HE / EHT Capabilities（TWT Responder Support、Broadcast TWT Support、Restricted TWT Support）、HE Operation（TWT Required）、broadcast TWT element（Negotiation Type=2）</td><td>宣告 AP 能力；廣告 broadcast / R-TWT 排程。有 R-TWT 排程時 Beacon 一定要帶 TWT element</td></tr>
+      <tr><td>(Re)Association Request / Response</td><td>Management</td><td>能力欄位；可選 TWT element</td><td>交換能力；可在關聯時順便協商 TWT（AP 對 HE STA 的關聯請求只是「should」回應）</td></tr>
+      <tr><td><b>TWT Setup</b></td><td>Action，Category = Unprotected S1G（9.6.24.8）</td><td>Category ・ Unprotected S1G Action ・ <b>Dialog Token</b> ・ <b>1 個 TWT element</b>（參數範圍協商時 2 個；MLD 每條 link 各 1 個）</td><td>請求（TWT Request=1）與回應（=0）都用它。回應照抄請求的 Dialog Token；AP 主動送出的 unsolicited 回應 Dialog Token=0</td></tr>
+      <tr><td>TWT Teardown</td><td>Action，Unprotected S1G（9.6.24.9）</td><td>1 octet <b>TWT Flow</b>：Flow ID 或 Broadcast TWT ID ・ Negotiation Type ・ Teardown All TWT</td><td>任一方拆除協議；broadcast 成員用 Negotiation Type=3 退出</td></tr>
+      <tr><td>TWT Information</td><td>Action，Unprotected S1G（9.6.24.12）</td><td>TWT Information field：Flow ID、Response Requested、Next TWT Request、All TWT、Next TWT</td><td>暫停 / 恢復 / 改下一次 SP，不必拆除重建</td></tr>
+      <tr><td>Protected TWT Setup / Teardown / Information</td><td>Action，Category = S1G（robust，9.6.25.6–8）</td><td>內容同上</td><td>雙方都協商了 MFP 且 RSNXE 的 Protected TWT Operations Support=1 時<b>必須</b>改用這組，並丟棄未保護版本</td></tr>
+      <tr><td>SCS Request / Response</td><td>Action（Robust AV Streaming）</td><td>SCS Descriptor＋QoS Characteristics element</td><td>R-TWT 可選：先描述流量特性，供 AP 決定排程</td></tr>
+      <tr><td>Ack</td><td>Control</td><td>—</td><td>上述 individually addressed management frame 都需 Ack</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h4>TWT element 拆解（base 9.4.2.198 PDF p.1358–1361，be 修訂 PDF p.222–227）</h4>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>欄位</th><th>內容</th><th>建立時要注意</th></tr></thead>
+    <tbody>
+      <tr><td>Control（1 octet）</td><td>NDP Paging Indicator ・ Responder PM Mode ・ <b>Negotiation Type</b>（2 bits）・ TWT Information Frame Disabled ・ Wake Duration Unit ・ <i>be 新增：</i>Link ID Bitmap Present、Aligned TWT</td><td>Negotiation Type：<code>0</code> individual、<code>1</code> wake TBTT、<code>2</code> AP 廣告 broadcast 排程、<code>3</code> 管理 broadcast 成員（加入 / 退出）。MSB 即 Broadcast bit</td></tr>
+      <tr><td>Request Type（individual，2 octets）</td><td>TWT Request ・ TWT Setup Command（3）・ Trigger ・ Implicit ・ Flow Type ・ TWT Flow Identifier（3）・ Wake Interval Exponent（5）・ TWT Protection</td><td>HE 須 Implicit=1；Trigger=1 表示 trigger-enabled（以 AP 回應的值為準）</td></tr>
+      <tr><td>Individual 參數集其餘欄位</td><td>Target Wake Time（8 octets，完整 TSF）・ TWT Group Assignment ・ Nominal Min Wake Duration（1）・ Wake Interval Mantissa（2）・ TWT Channel ・ NDP Paging ・ <i>be：</i>Link ID Bitmap、Aligned TWT Link Bitmap</td><td>Request TWT 時 TWT=0（MLD 要求跨 link 對齊時例外）；Suggest / Demand 填想要的 TSF</td></tr>
+      <tr><td>Request Type（broadcast）</td><td>TWT Request ・ Setup Command ・ Trigger ・ Last Broadcast Parameter Set ・ Flow Type ・ <b>Broadcast TWT Recommendation</b>（3）・ Exponent ・ <i>be：</i>Aligned</td><td>Recommendation=4 → 這組參數集就是 <b>Restricted TWT Parameter Set</b>；STA 申請 R-TWT 時也要填 4</td></tr>
+      <tr><td>Broadcast 參數集其餘欄位</td><td>Target Wake Time（2 octets = TSF[10:25]）・ Min Wake Duration ・ Mantissa ・ <b>Broadcast TWT Info</b>（Restricted TWT Traffic Info Present、Restricted TWT Schedule Info、Broadcast TWT ID（5）、Persistence（8））</td><td>R-TWT 的 Broadcast TWT ID 必定非 0；Schedule Info=3 時 ID=31</td></tr>
+      <tr><td>Restricted TWT Traffic Info（0 或 3 octets）</td><td>Traffic Info Control（DL / UL TID Bitmap Valid）・ DL TID Bitmap ・ UL TID Bitmap</td><td>個別定址的 setup frame 必帶（Present=1）；Beacon 廣告時不帶（Present=0）。Valid=0 代表該方向所有映射到此 link 的 TID 都算延遲敏感</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="grid g2" style="margin-top:14px">
+    <div class="card feat"><span class="tag">協商細節</span><h4>Setup Command 的往返規則</h4>
+      <p>Accept 才算成立；Alternate / Dictate 時 STA「應」修改參數再送一次請求（例如接受 AP 給的值）。AP 回應的 Flow ID 可以和請求不同。要改既有協議的參數，就用同一個 Flow ID 再送 TWT Setup。AP 也可以送 <b>unsolicited</b> 的 Accept / Alternate / Dictate，Accept 即直接建立協議；broadcast 情境下 AP 也能在 (Re)Association Response 或 TWT Setup 以 Negotiation Type=3 直接指派成員。</p>
+      <div class="sys"><b>出處：</b>base 10.46.1（PDF p.2355）、26.8.2 與 Table 26-5、26.8.3.3 與 Table 26-7（PDF p.4064–4065）。</div></div>
+    <div class="card feat"><span class="tag">MLD</span><h4>多 link 時的 TWT Setup</h4>
+      <p>TWT Setup 可以在任何 enabled link 上送。TWT element 的 <b>Link ID Bitmap</b> 指出協議屬於哪條 link（每個 element 只能設 1 bit），Target Wake Time 以該 link 的 TSF 為準；同一個 TWT Setup 可帶多個 TWT element，一次為多條 link 建協議（每條 link 最多出現一次）。回應必須指向相同 link。拆除時 TWT Teardown 帶 MLO Link Information element 指定 link。</p>
+      <div class="sys"><b>出處：</b>be 35.3.24.1（PDF p.583–585）、範例 AH.13（PDF p.1012–1013）。</div></div>
+  </div>
+
+  <h3>2.4 MLD 下的 TWT（802.11be 35.3.24，PDF p.583–586）</h3>
+  <p>Individual TWT element 以 <b>Link ID Bitmap</b> 指定要在哪些 link 建立協議；支援 <b>Aligned TWT</b>（Basic Multi-Link element 宣告）時，可用 Aligned TWT Bitmap 要求多條 link 的 SP 起始時間對齊、其他參數相同。Broadcast TWT 也可用 Aligned subfield 宣告跨 link 對齊。這讓 EMLSR / NSTR 用戶端可以把所有 link 的喚醒時間排在一起，其餘時間全部 doze。</p>
+
+  <h3>2.5 TWT vs R-TWT 比較與設計重點</h3>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>項目</th><th>TWT（Wi-Fi 6）</th><th>R-TWT（Wi-Fi 7）</th><th>Co-RTWT（Wi-Fi 8，草案）</th></tr></thead>
+    <tbody>
+      <tr><td>主要目的</td><td>省電、降低競爭</td><td>延遲敏感流量的時間保留</td><td>跨 AP 對齊 R-TWT，抵擋 OBSS 干擾</td></tr>
+      <tr><td>保護對象</td><td>只約束協議雙方</td><td>BSS 內所有支援 R-TWT 的 STA 都要讓出 SP</td><td>鄰近 BSS 也協調避開</td></tr>
+      <tr><td>流量識別</td><td>無（以 SP 為單位）</td><td>DL / UL TID Bitmap + 可選 SCS QoS Characteristics</td><td>沿用 R-TWT</td></tr>
+      <tr><td>舊裝置</td><td>不受影響</td><td>靠 1 TU quiet interval 壓制 SP 開頭</td><td>—</td></tr>
+      <tr><td>限制</td><td>無法防止 BSS 內其他 STA 佔用</td><td>無法約束 OBSS 與舊 STA 的整段 SP</td><td>需 AP 間時間同步與協調協定</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="card feat"><span class="tag">AP 排程器</span><h4>SP 邊界管理</h4><p>需知道每個 R-TWT SP 起點，在 SP 前截斷自己的 TXOP 與 A-MPDU 長度，SP 內優先處理 R-TWT TIDs，並在 SP 開頭排 Trigger / BSR 收集。</p></div>
+    <div class="card feat"><span class="tag">用戶端韌體</span><h4>TXOP 長度預估</h4><p>每次傳送前要判斷能否在下一個 SP 前完成（含 Ack / BA），否則 defer；這需要精確的 TSF 與 PPDU 時長計算。</p></div>
+    <div class="card feat"><span class="tag">應用</span><h4>何時用 R-TWT</h4><p>VR/AR、雲端遊戲、語音 / 視訊會議、工業控制等週期性、有延遲上限的流量；配合 SCS 描述流量特性，配合 TTLM 把 R-TWT TIDs 放到最乾淨的 link。</p></div>
+  </div>
+</section>
+
+<section id="spec-be">
+  <h2><span class="num">3</span>802.11be 規格速查（Wi-Fi 7 / EHT）</h2>
+  <p class="intro">整理自 IEEE 802.11be-2024 原文，共 <b id="beCount">636</b> 個條文單位的繁體中文摘要（MAC：Clause 35 EHT MAC、PHY：Clause 36 EHT PHY、MLO、EMLSR、MRU、TTLM、R-TWT、EPCS 等）。可用關鍵字搜尋，或依章節篩選；Wi-Fi 8 (802.11bn) 是建立在這些機制之上的延伸，閱讀前者有助理解後者。</p>
+  <div class="spec-ctl">
+    <input class="search" id="beq" type="search" placeholder="搜尋，例如 EMLSR、MRU、TTLM、R-TWT、320 MHz…" aria-label="搜尋 802.11be 規格">
+    <select id="beSel" aria-label="依章節篩選"></select>
+  </div>
+  <div class="spec-meta" id="beMeta"></div>
+  <div id="beList"></div>
+  <div class="note"><b>頁碼規則：</b>「p.」為規格書印刷頁碼，PDF 頁碼 = 印刷頁 + 1（原文 PDF：<code>80211be-2024.pdf</code>）。摘要為學習輔助，條文細節與數值請以原文為準。</div>
+</section>
+<footer>
+  整理自 IEEE 802.11be-2024 與 802.11-2024 原文，學習輔助用；條文細節與數值請以原文為準。最後更新：2026-11-22。
+</footer>
+</main>
+</div>
+<script src="spec-be-data.js"></script>
+<script src="assets/spec-search.js"></script>
+<script>SpecSearch({data:window.SPEC_BE,p:'be'});</script>
+<script src="assets/site.js"></script>
+</body>
+</html>

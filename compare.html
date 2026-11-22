@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wi-Fi 6 / 7 / 8 比較</title>
+<meta name="description" content="IEEE 802.11ax / be / bn（Wi-Fi 6 / 7 / 8）規格並列比較">
+<script>(function(){var t=null;try{t=new URLSearchParams(location.search).get("theme")}catch(e){}if(t!=="dark"&&t!=="light"){try{t=localStorage.getItem("wifi8-theme")}catch(e){}}if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t)})();</script>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<div class="layout">
+<nav class="toc" id="toc">
+  <div class="sitenav"><a href="index.html">首頁</a><a href="wifi8.html">Wi-Fi 8</a><a href="wifi7.html">Wi-Fi 7</a><a href="wifi-sensing.html">Wi-Fi Sensing</a><a href="compare.html" class="cur" aria-current="page">6/7/8 比較</a></div>
+  <div class="brand">Wi-Fi 6 / 7 / 8</div>
+  <div class="sub">規格並列比較</div>
+  <button class="menu-btn" id="menuBtn" aria-expanded="false">目錄</button>
+  <ol>
+    <li><a href="#compare">1. 比較表</a></li>
+    <li><a href="#links">2. 延伸閱讀</a></li>
+  </ol>
+  <button class="theme-btn" id="themeBtn">切換深 / 淺色</button>
+</nav>
+
+<main>
+<header class="hero">
+  <h1>Wi-Fi 6 / 7 / 8 規格比較</h1>
+  <p class="lead">把 802.11ax（HE）、802.11be（EHT）與 802.11bn（UHR）在頻寬、調變、多鏈路、AP 協作、漫遊與省電等面向並列，快速看出每一代的設計重心。</p>
+  <div class="chips"><span class="chip">802.11ax · Wi-Fi 6/6E</span><span class="chip">802.11be · Wi-Fi 7</span><span class="chip">802.11bn · Wi-Fi 8</span></div>
+  <div class="note"><b>提醒：</b>802.11bn 仍在 Draft 階段，表中 Wi-Fi 8 欄位可能隨 Draft 變動。</div>
+</header>
+
+<section id="compare">
+  <h2><span class="num">1</span>Wi-Fi 6 / 7 / 8 比較</h2>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>項目</th><th>Wi-Fi 6/6E (802.11ax)</th><th>Wi-Fi 7 (802.11be)</th><th>Wi-Fi 8 (802.11bn)</th></tr></thead>
+    <tbody>
+      <tr><td>名稱</td><td>HE – High Efficiency</td><td>EHT – Extremely High Throughput</td><td class="hl">UHR – Ultra High Reliability</td></tr>
+      <tr><td>核心目標</td><td>密集環境效率</td><td>峰值吞吐、低延遲</td><td class="hl">可靠度、尾端延遲、移動性</td></tr>
+      <tr><td>頻段</td><td>2.4 / 5 / 6 GHz</td><td>2.4 / 5 / 6 GHz</td><td>2.4 / 5 / 6 GHz</td></tr>
+      <tr><td>最大頻寬</td><td>160 MHz</td><td>320 MHz</td><td>320 MHz（不增加）</td></tr>
+      <tr><td>最高調變</td><td>1024-QAM</td><td>4096-QAM</td><td>4096-QAM + 新增中間 MCS、UEQM</td></tr>
+      <tr><td>LDPC</td><td>1944-bit codeword</td><td>1944-bit codeword</td><td class="hl">新增 2× 長度（3888-bit）codeword</td></tr>
+      <tr><td>多鏈路</td><td>—</td><td>MLO（STR / EMLSR）</td><td>MLO 強化（EMLSR 改進、更快鏈路切換）</td></tr>
+      <tr><td>RU / 頻寬利用</td><td>OFDMA RU</td><td>MRU、Preamble Puncturing</td><td class="hl">DRU、NPCA、DSO</td></tr>
+      <tr><td>AP 協作</td><td>BSS Coloring / SR</td><td>（Multi-AP 延後至 bn）</td><td class="hl">Co-SR、Co-BF、Co-TDMA、Co-RTWT</td></tr>
+      <tr><td>漫遊</td><td>802.11r/k/v</td><td>802.11r/k/v</td><td class="hl">Seamless Mobility Domain</td></tr>
+      <tr><td>省電</td><td>TWT</td><td>TWT、Restricted TWT</td><td>AP Power Save、動態省電強化</td></tr>
+      <tr><td>峰值 PHY 速率（理論）</td><td>~9.6 Gbps</td><td>~23 Gbps（8SS）</td><td>與 Wi-Fi 7 相近；重點在有效吞吐</td></tr>
+    </tbody>
+  </table>
+  </div>
+  </section>
+
+<section id="links">
+  <h2><span class="num">2</span>延伸閱讀</h2>
+  <div class="grid g2">
+    <a class="card topic" href="wifi7.html"><h3>Wi-Fi 7 · 802.11be</h3><p>MLO、TWT / R-TWT 與全部條文單位的規格速查。</p><span class="go">進入 Wi-Fi 7 →</span></a>
+    <a class="card topic" href="wifi8.html"><h3>Wi-Fi 8 · 802.11bn</h3><p>PHY / MAC 新功能、Multi-AP 協作、Seamless Roaming 與系統設計影響。</p><span class="go">進入 Wi-Fi 8 →</span></a>
+  </div>
+</section>
+<footer>
+  比較表內容整理自 IEEE 802.11ax / be 標準與 802.11bn 公開資訊，僅供學習參考。最後更新：2026-11-22。
+</footer>
+</main>
+</div>
+
+<script src="assets/site.js"></script>
+</body>
+</html>

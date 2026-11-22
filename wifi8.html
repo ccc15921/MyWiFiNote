@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wi-Fi 8 系統設計手冊</title>
+<meta name="description" content="IEEE 802.11bn (UHR, Wi-Fi 8) 給系統設計工程師的技術導讀">
+<script>(function(){var t=null;try{t=new URLSearchParams(location.search).get("theme")}catch(e){}if(t!=="dark"&&t!=="light"){try{t=localStorage.getItem("wifi8-theme")}catch(e){}}if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t)})();</script>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<div class="layout">
+<nav class="toc" id="toc">
+  <div class="sitenav"><a href="index.html">首頁</a><a href="wifi8.html" class="cur" aria-current="page">Wi-Fi 8</a><a href="wifi7.html">Wi-Fi 7</a><a href="wifi-sensing.html">Wi-Fi Sensing</a><a href="compare.html">6/7/8 比較</a></div>
+  <div class="brand">Wi-Fi 8 · 802.11bn</div>
+  <div class="sub">系統設計工程師導讀</div>
+  <button class="menu-btn" id="menuBtn" aria-expanded="false">目錄</button>
+  <ol>
+    <li><a href="#overview">1. 一頁總覽</a></li>
+    <li><a href="#timeline">2. 標準時程</a></li>
+    <li><a href="#goals">3. 設計目標與 KPI</a></li>
+    <li><a href="#phy">4. PHY 層新功能</a></li>
+    <li><a href="#mac">5. MAC 層新功能</a></li>
+    <li><a href="#multiap">6. Multi-AP Coordination</a></li>
+    <li><a href="#mobility">7. Seamless Roaming</a></li>
+    <li><a href="#syseng">8. 系統設計影響</a></li>
+    <li><a href="#glossary">9. 名詞表</a></li>
+    <li><a href="#refs">10. 參考資料</a></li>
+  </ol>
+  <button class="theme-btn" id="themeBtn">切換深 / 淺色</button>
+</nav>
+
+<main>
+<header class="hero">
+  <h1>Wi-Fi 8（IEEE 802.11bn, UHR）<br>系統設計工程師導讀</h1>
+  <p class="lead">Wi-Fi 8 的主軸不是更高的峰值速率，而是 <b>Ultra High Reliability</b>：在真實干擾、移動與多 AP 環境下，讓吞吐、延遲尾端與掉包率都更可預期。本頁整理標準目標、PHY/MAC 新機制，以及它們對 SoC、RF、韌體與系統架構的影響。</p>
+  <div class="chips">
+    <span class="chip">TGbn Task Group</span><span class="chip">UHR = Ultra High Reliability</span>
+    <span class="chip">2.4 / 5 / 6 GHz</span><span class="chip">與 802.11be 向下相容</span><span class="chip">內容更新至 2026-11</span>
+  </div>
+  <div class="note"><b>閱讀提醒：</b>802.11bn 仍在 Draft 階段，各功能的細節（欄位格式、是否為 mandatory、參數值）會隨 Draft 版本變動。本頁著重於「概念與系統影響」，實作時請以 IEEE 802.11 Mentor 上最新 Draft 與 Wi-Fi Alliance 認證規範為準。</div>
+</header>
+
+<section id="overview">
+  <h2><span class="num">1</span>一頁總覽</h2>
+  <p class="intro">如果只記五件事：</p>
+  <div class="grid g2">
+    <div class="card"><b>① 從「快」轉向「穩」</b><br>維持 Wi-Fi 7 的 320 MHz、4096-QAM 與 MLO 骨架，KPI 改為「在相同 SINR 下的有效吞吐」、「95th 百分位延遲」與「MPDU 掉包率」。</div>
+    <div class="card"><b>② AP 之間開始合作</b><br>Multi-AP Coordination（Co-SR、Co-BF、Co-TDMA、Co-RTWT）讓鄰近 AP 協調時間、功率與空間，降低 OBSS 干擾。</div>
+    <div class="card"><b>③ 更聰明地使用頻寬</b><br>NPCA（主通道忙時改用非主通道）、DSO（動態子頻帶）、DRU（分散式 RU）提升寬頻道的實際利用率。</div>
+    <div class="card"><b>④ 漫遊不掉包</b><br>Seamless Mobility Domain 讓 STA 在 AP 之間轉移時不需重新 association / 重新建立 key，目標是零掉包的 BSS 轉換。</div>
+    <div class="card"><b>⑤ PHY 細修提升鏈路餘裕</b><br>新增中間 MCS、Unequal Modulation (UEQM)、更長 LDPC codeword、ELR 長距離模式，讓 link adaptation 更細緻。</div>
+    <div class="card"><b>⑥ 省電與共存</b><br>AP 端省電（AP Power Save）、更彈性的 STA 省電、In-Device Coexistence（與 BT/UWB/蜂巢共存）訊令。</div>
+  </div>
+</section>
+
+<section id="timeline">
+  <h2><span class="num">2</span>標準時程</h2>
+  <p class="intro">IEEE 標準與 Wi-Fi Alliance 認證是兩條並行的時間線；晶片廠通常在 Draft 2.x 左右就會推出「Draft-compliant」產品。</p>
+  <div class="timeline">
+    <div class="ev done"><span class="d">2022 – 2023</span><div class="t">UHR Study Group 成立，討論需求；2023 年 PAR 核准，成立 Task Group <b>TGbn</b>。</div></div>
+    <div class="ev done"><span class="d">2024</span><div class="t">功能提案收斂、Specification Framework Document (SFD) 持續擴充。</div></div>
+    <div class="ev done"><span class="d">2025</span><div class="t">Draft 0.x → Draft 1.0，進入 WG Letter Ballot；首批晶片廠宣布 Wi-Fi 8 平台與原型展示。</div></div>
+    <div class="ev now"><span class="d">2026（現在）</span><div class="t">Draft 1.x / 2.x comment resolution；互通性測試（Plugfest）準備。</div></div>
+    <div class="ev"><span class="d">~2027 – 2028</span><div class="t">Sponsor Ballot → 預計 2028 年標準正式發布；Wi-Fi Alliance「Wi-Fi 8」認證計畫預期同期上線。</div></div>
+  </div>
+  <div class="note">日期為公開資訊的近似值，用於規劃產品節奏；實際里程碑請查 IEEE 802.11 官方時程表（見參考資料）。</div>
+</section>
+
+<section id="goals">
+  <h2><span class="num">3</span>設計目標與 KPI</h2>
+  <p class="intro">TGbn PAR 定義的目標相對於 802.11be，量測條件為「相同訊號 / 干擾環境」，而不是理想實驗室條件。</p>
+  <div class="grid g4">
+    <div class="card kpi"><div class="v">+25%</div><div class="l">在給定 SINR 下的吞吐量（含多 AP / 干擾場景）</div></div>
+    <div class="card kpi"><div class="v">−25%</div><div class="l">95th 百分位延遲（尾端延遲，含 MAC 排隊）</div></div>
+    <div class="card kpi"><div class="v">−25%</div><div class="l">MPDU 掉包率（含 BSS 轉換 / 漫遊期間）</div></div>
+    <div class="card kpi"><div class="v">↓ 功耗</div><div class="l">改善 AP 與 non-AP STA 的電源效率</div></div>
+  </div>
+  <div class="tip"><b>對系統工程師的意義：</b>驗收指標應從「峰值 Mbps」改為「分佈」：P50 / P95 / P99 延遲、掉包率、漫遊中斷時間、在 OBSS 負載下的吞吐。你的測試框架與 KPI 儀表板需要先準備好這些量測。</div>
+  <div class="tip"><b>延伸閱讀：</b>Wi-Fi 6 / 7 / 8 的並列規格比較見 <a href="compare.html">比較頁</a>；Wi-Fi 7 的 MLO、TWT / R-TWT 見 <a href="wifi7.html#mlo">Wi-Fi 7 分頁</a>。</div>
+</section>
+
+<section id="phy">
+  <h2><span class="num">4</span>PHY 層新功能</h2>
+  <p class="intro">PHY 改動相對保守，目的是讓 link adaptation 更細、在邊緣訊號下更堅韌，並保留與 EHT 共用的硬體架構。</p>
+  <div class="grid g2">
+    <div class="card feat"><span class="tag">MCS</span><h4>新增中間 MCS</h4>
+      <p>在既有 MCS 之間插入新的調變 / 碼率組合，縮小相鄰 MCS 的 SNR 間距（原本約 2–3 dB），減少 rate adaptation 時「上一階太激進、下一階太保守」的損失。</p>
+      <div class="sys"><b>系統影響：</b>Rate control 演算法表格擴充；PER-vs-SNR 校準點增加；需要更準確的 SNR / EVM 估測。</div></div>
+    <div class="card feat"><span class="tag">MIMO</span><h4>Unequal Modulation (UEQM)</h4>
+      <p>不同 spatial stream 可使用不同調變階數。在通道矩陣奇異值差異大時（例如第 2 條 stream 明顯較弱），避免為了遷就最弱的 stream 而全體降階。</p>
+      <div class="sys"><b>系統影響：</b>Beamforming 回饋需要能支持 per-stream 決策；MIMO detector 與 bit-interleaver / parser 需支援混合星座。</div></div>
+    <div class="card feat"><span class="tag">FEC</span><h4>2× LDPC codeword</h4>
+      <p>新增約兩倍長度（3888-bit）的 LDPC codeword，可帶來約 0.5–1 dB 的編碼增益，尤其對大 A-MPDU 有利。</p>
+      <div class="sys"><b>系統影響：</b>LDPC decoder 面積 / 記憶體與延遲上升；需評估吞吐量模式下的 decoder 平行度與功耗。</div></div>
+    <div class="card feat"><span class="tag">UL / 6 GHz</span><h4>Distributed RU (DRU)</h4>
+      <p>把一個 RU 的 tone 分散到更寬的頻寬上。在 6 GHz LPI 有 <b>PSD（功率頻譜密度）</b>上限時，分散 tone 可讓 STA 以更高總功率上傳，改善上行覆蓋。</p>
+      <div class="sys"><b>系統影響：</b>AP 端排程器需支援 DRU 分配；STA PA 的 back-off 與法規 PSD 計算方式改變。</div></div>
+    <div class="card feat"><span class="tag">Range</span><h4>Enhanced Long Range (ELR)</h4>
+      <p>新的長距離 PPDU 格式，以較低速率換取更好的接收靈敏度，適合 IoT、戶外或邊緣覆蓋，用於提升管理 / 低速資料的可靠度。</p>
+      <div class="sys"><b>系統影響：</b>Preamble 偵測與 AGC 設計；與既有 ER SU 格式的辨識。</div></div>
+    <div class="card feat"><span class="tag">Preamble</span><h4>UHR PPDU 格式</h4>
+      <p>新增 UHR-SIG 等欄位以承載新功能訊令，同時保留 L-STF/L-LTF/L-SIG/U-SIG 讓舊裝置可正確 defer。</p>
+      <div class="sys"><b>系統影響：</b>基頻 RX 解析鏈需支援 HE / EHT / UHR 自動辨識；Wi-Fi 7 硬體多數可沿用。</div></div>
+  </div>
+</section>
+
+<section id="mac">
+  <h2><span class="num">5</span>MAC 層新功能</h2>
+  <p class="intro">Wi-Fi 8 的「可靠度」大多來自 MAC：更好的通道接入、排程、共存與省電。</p>
+
+  <h3>6.1 NPCA — Non-Primary Channel Access</h3>
+  <p>傳統 Wi-Fi 只要 <b>主通道（primary 20 MHz）</b>被 OBSS 佔用，整個寬頻道都必須等待，即使其他 sub-channel 是空的。NPCA 允許 AP/STA 在主通道忙碌時，切到預先協商的 <b>NPCA primary channel</b> 繼續競爭與傳輸。</p>
+  <figure>
+    <svg viewBox="0 0 760 210" role="img" aria-label="NPCA 示意：主通道被 OBSS 佔用時改用非主通道傳輸">
+      <text x="10" y="22" font-size="14" font-weight="700">Wi-Fi 7：主通道忙 → 整個 160 MHz 閒置</text>
+      <g transform="translate(10,32)">
+        <rect x="0" y="0" width="90" height="34" rx="4" fill="var(--c2)" opacity=".85"/>
+        <text x="45" y="22" font-size="12" text-anchor="middle" fill="#fff" style="fill:#fff">P20 OBSS</text>
+        <rect x="94" y="0" width="270" height="34" rx="4" fill="none" stroke="var(--line)" stroke-dasharray="5 4"/>
+        <text x="229" y="22" font-size="12" text-anchor="middle" class="muted">閒置但無法使用</text>
+      </g>
+      <text x="10" y="118" font-size="14" font-weight="700">Wi-Fi 8 NPCA：切到 NPCA primary 繼續傳</text>
+      <g transform="translate(10,128)">
+        <rect x="0" y="0" width="90" height="34" rx="4" fill="var(--c2)" opacity=".85"/>
+        <text x="45" y="22" font-size="12" text-anchor="middle" style="fill:#fff">P20 OBSS</text>
+        <rect x="94" y="0" width="270" height="34" rx="4" fill="var(--c1)" opacity=".85"/>
+        <text x="229" y="22" font-size="12" text-anchor="middle" style="fill:#fff">本 BSS 在 NPCA 通道傳輸</text>
+      </g>
+      <g transform="translate(420,40)" font-size="13">
+        <text x="0" y="0" font-weight="700">流程重點</text>
+        <text x="0" y="24" class="muted">1. 偵測到 OBSS PPDU 佔主通道</text>
+        <text x="0" y="46" class="muted">2. 讀取其 duration / BW 判斷可用部分</text>
+        <text x="0" y="68" class="muted">3. 切換到 NPCA primary（含切換延遲）</text>
+        <text x="0" y="90" class="muted">4. 在剩餘頻寬做 EDCA 競爭並傳輸</text>
+        <text x="0" y="112" class="muted">5. OBSS TXOP 結束前切回主通道</text>
+      </g>
+    </svg>
+    <figcaption>圖 1：NPCA 讓寬頻道在 OBSS 佔用主通道時仍能部分利用。</figcaption>
+  </figure>
+  <p><b>系統影響：</b>RF / 基頻需要快速切換 center frequency 與 primary（微秒級）；MAC 需正確追蹤 OBSS NAV 與 TXOP 結束時間；與 MLO、Preamble Puncturing 組合時的狀態機複雜度明顯上升。</p>
+
+  <h3>6.2 其他 MAC 強化</h3>
+  <div class="grid g2">
+    <div class="card feat"><span class="tag">頻寬</span><h4>DSO – Dynamic Sub-band Operation</h4>
+      <p>窄頻寬能力的 STA（例如只支援 80/160 MHz）可被動態分派到 320 MHz BSS 中的非主子頻帶，讓 AP 的寬頻寬被不同 STA 同時有效使用。</p></div>
+    <div class="card feat"><span class="tag">延遲</span><h4>低延遲 / 優先接入</h4>
+      <p>針對 latency-sensitive 流量的優先 EDCA 機制（如 P-EDCA）、更細的低延遲流量指示與排程資訊，搭配 Restricted TWT 保護時槽。</p></div>
+    <div class="card feat"><span class="tag">MLO</span><h4>MLO / EMLSR 強化</h4>
+      <p>縮短 EMLSR 鏈路切換延遲、改善 padding / transition 開銷，讓單 radio 的多鏈路裝置（手機常見）表現更接近 STR。</p></div>
+    <div class="card feat"><span class="tag">省電</span><h4>AP Power Save</h4>
+      <p>允許 AP（特別是電池供電的 Mobile AP / Mesh 節點）宣告不可用時段，STA 依此排程，減少 AP 的待機功耗。</p></div>
+    <div class="card feat"><span class="tag">共存</span><h4>In-Device Coexistence (IDC)</h4>
+      <p>標準化的訊令讓 STA 告知 AP 自己因 BT / LTE / 5G / UWB 共存而暫時不可用的時段，AP 避免在這些時間送資料，減少重傳。</p></div>
+    <div class="card feat"><span class="tag">可靠度</span><h4>Link Adaptation 與 BA 強化</h4>
+      <p>更即時的鏈路品質回饋、Block Ack 相關改良，提升重傳效率。HARQ 曾被提出討論，是否納入請追蹤 Draft 最新狀態。</p></div>
+  </div>
+</section>
+
+<section id="multiap">
+  <h2><span class="num">6</span>Multi-AP Coordination (MAPC)</h2>
+  <p class="intro">Wi-Fi 8 最具結構性的改變：AP 之間有了標準化的協調協定。一個 <b>Sharing AP</b> 取得 TXOP 後，可邀請一個或多個 <b>Shared AP</b> 以協調方式使用同一段時間 / 頻率 / 空間。</p>
+  <figure>
+    <svg viewBox="0 0 760 270" role="img" aria-label="Multi-AP 協作四種模式">
+      <g font-size="13">
+        <!-- AP1 -->
+        <rect x="80" y="40" width="110" height="44" rx="8" fill="var(--c1)"/>
+        <text x="135" y="60" text-anchor="middle" style="fill:#fff" font-weight="700">AP1</text>
+        <text x="135" y="76" text-anchor="middle" style="fill:#fff" font-size="11">Sharing AP</text>
+        <!-- AP2 -->
+        <rect x="570" y="40" width="110" height="44" rx="8" fill="var(--c3)"/>
+        <text x="625" y="60" text-anchor="middle" style="fill:#fff" font-weight="700">AP2</text>
+        <text x="625" y="76" text-anchor="middle" style="fill:#fff" font-size="11">Shared AP</text>
+        <line x1="190" y1="62" x2="570" y2="62" stroke="var(--muted)" stroke-dasharray="6 4"/>
+        <text x="380" y="54" text-anchor="middle" class="muted" font-size="12">MAPC 協商 / 觸發（over-the-air 或 backhaul 輔助）</text>
+        <!-- STAs -->
+        <circle cx="95" cy="200" r="16" fill="none" stroke="var(--c1)" stroke-width="2"/><text x="95" y="205" text-anchor="middle" font-size="11">STA1</text>
+        <circle cx="200" cy="215" r="16" fill="none" stroke="var(--c1)" stroke-width="2"/><text x="200" y="220" text-anchor="middle" font-size="11">STA2</text>
+        <circle cx="560" cy="215" r="16" fill="none" stroke="var(--c3)" stroke-width="2"/><text x="560" y="220" text-anchor="middle" font-size="11">STA3</text>
+        <circle cx="665" cy="200" r="16" fill="none" stroke="var(--c3)" stroke-width="2"/><text x="665" y="205" text-anchor="middle" font-size="11">STA4</text>
+        <line x1="120" y1="84" x2="97" y2="183" stroke="var(--c1)" stroke-width="2"/>
+        <line x1="150" y1="84" x2="198" y2="198" stroke="var(--c1)" stroke-width="2"/>
+        <line x1="610" y1="84" x2="562" y2="198" stroke="var(--c3)" stroke-width="2"/>
+        <line x1="640" y1="84" x2="663" y2="183" stroke="var(--c3)" stroke-width="2"/>
+        <!-- interference / null -->
+        <line x1="190" y1="84" x2="545" y2="210" stroke="var(--c2)" stroke-width="1.5" stroke-dasharray="3 4"/>
+        <text x="380" y="160" text-anchor="middle" font-size="12" style="fill:var(--c2)">干擾路徑 → 以功率控制 (Co-SR) 或 nulling (Co-BF) 抑制</text>
+      </g>
+    </svg>
+    <figcaption>圖 2：Sharing AP 與 Shared AP 協調，同時服務各自的 STA 並控制交叉干擾。</figcaption>
+  </figure>
+
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>模式</th><th>協調維度</th><th>運作方式</th><th>需要的資訊</th><th>實作難度</th></tr></thead>
+    <tbody>
+      <tr><td><b>Co-TDMA</b></td><td>時間</td><td>Sharing AP 把 TXOP 的一段時間分給 Shared AP 使用，彼此不重疊。</td><td>TXOP 時間、流量需求</td><td>低</td></tr>
+      <tr><td><b>Co-RTWT</b></td><td>時間（週期性）</td><td>多 AP 對齊 Restricted TWT 服務時段，保護低延遲流量不被鄰 BSS 打斷。</td><td>TWT 排程、低延遲流量需求</td><td>低–中</td></tr>
+      <tr><td><b>Co-SR</b></td><td>功率</td><td>同時傳輸，但 Shared AP 依路徑損耗限制發射功率，使對方 STA 的 SINR 仍足夠。</td><td>AP↔STA 的 RSSI / 路徑損耗、可容忍干擾</td><td>中</td></tr>
+      <tr><td><b>Co-BF</b></td><td>空間</td><td>各 AP 對鄰 BSS 的 STA 做 null steering，同時同頻傳輸。</td><td>跨 BSS 的 CSI（sounding 對鄰 STA）</td><td>高</td></tr>
+      <tr><td>Joint Transmission</td><td>空間（分散式 MIMO）</td><td>多 AP 共同傳同一份資料，需相位同步與資料共享。</td><td>精確時間 / 頻率 / 相位同步、高速 backhaul</td><td>很高（未列為主要功能）</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="tip"><b>架構建議：</b>先做 Co-TDMA / Co-RTWT（對 RF 要求低、主要是 MAC 排程），再做 Co-SR（需要跨 AP 的量測資料庫），最後 Co-BF（需要 sounding 與同步）。在 Mesh / EasyMesh 產品中，控制平面（controller）與 MAPC 的資料平面要分開設計。</div>
+</section>
+
+<section id="mobility">
+  <h2><span class="num">7</span>Seamless Roaming（Seamless Mobility Domain）</h2>
+  <p class="intro">借用 MLO 的概念：把多個實體 AP 視為同一個「邏輯實體」，STA 在其中移動時，上層的 association、安全 context 與 Block Ack 狀態可以延續。</p>
+  <figure>
+    <svg viewBox="0 0 760 200" role="img" aria-label="Seamless Mobility Domain 漫遊示意">
+      <g font-size="13">
+        <rect x="200" y="14" width="360" height="40" rx="8" fill="none" stroke="var(--c4)" stroke-width="2"/>
+        <text x="380" y="39" text-anchor="middle" font-weight="700">SMD 邏輯實體（共用 association / key / BA context）</text>
+        <rect x="140" y="96" width="120" height="40" rx="8" fill="var(--c1)"/><text x="200" y="121" text-anchor="middle" style="fill:#fff">AP-A</text>
+        <rect x="320" y="96" width="120" height="40" rx="8" fill="var(--c1)"/><text x="380" y="121" text-anchor="middle" style="fill:#fff">AP-B</text>
+        <rect x="500" y="96" width="120" height="40" rx="8" fill="var(--c1)"/><text x="560" y="121" text-anchor="middle" style="fill:#fff">AP-C</text>
+        <line x1="200" y1="96" x2="300" y2="54" stroke="var(--c4)"/><line x1="380" y1="96" x2="380" y2="54" stroke="var(--c4)"/><line x1="560" y1="96" x2="460" y2="54" stroke="var(--c4)"/>
+        <circle cx="250" cy="172" r="14" fill="none" stroke="var(--c3)" stroke-width="2"/><text x="250" y="177" text-anchor="middle" font-size="11">STA</text>
+        <path d="M270 172 L 470 172" stroke="var(--c3)" stroke-width="2" marker-end="url(#arr)"/>
+        <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--c3)"/></marker></defs>
+        <text x="600" y="177" class="muted" font-size="12">移動：只換服務 AP，不重新認證</text>
+      </g>
+    </svg>
+    <figcaption>圖 3：STA 在 SMD 內漫遊時，不需重做 4-way handshake，資料路徑由後端切換。</figcaption>
+  </figure>
+  <div class="grid g3">
+    <div class="card"><b>傳統 802.11r FT</b><br><span class="mono" style="color:var(--muted)">掃描 → FT auth → reassoc → 重建 BA</span><br>中斷通常為數十 ms，期間可能掉包。</div>
+    <div class="card"><b>Wi-Fi 8 SMD</b><br><span class="mono" style="color:var(--muted)">準備目標 AP → 切換 → 繼續</span><br>目標為無掉包轉換（make-before-break 概念）。</div>
+    <div class="card"><b>後端需求</b><br>AP 間要能同步 STA context、PN / sequence number、緩衝中的封包；backhaul 延遲與 controller 設計是關鍵。</div>
+  </div>
+
+  <div class="note"><b>Draft 狀態提醒：</b>以下流程依 TGbn SFD 與 Draft 1.x 的方向整理。整體架構（SMD-ME 錨點、準備 / 執行兩階段、context 轉移）已相對穩定；但<b>訊框名稱、欄位格式、金鑰是否在 AP MLD 間共用、DL 緩衝由誰轉送</b>等細節仍在 comment resolution 中變動，實作時請對照最新 Draft。</div>
+
+  <h3>8.1 架構：誰是「錨點」，誰只是「接入點」</h3>
+  <p>理解 SMD 的關鍵是：<b>把 Wi-Fi 7 MLO 的「一個 AP MLD、多條 link、一份 association」再往上推一層</b>。在 MLO 中，STA 換 link 不用重新 association，因為 association 與金鑰綁在 AP MLD 上；在 SMD 中，association 與安全關係綁在 <b>SMD Management Entity（SMD-ME）</b>上，所以換 AP MLD 也不用重來。</p>
+  <div class="grid g3">
+    <div class="card feat"><span class="tag">錨點</span><h4>SMD-ME</h4>
+      <p>SMD 內的邏輯管理實體，可與某台 AP MLD 共置，也可放在 controller。持有 STA 的 <b>association 身分</b>、<b>PMKSA / PTKSA</b>（4-way handshake 的對端），並且是面向 DS（有線網路）的<b>橋接點</b>，所以 STA 換 AP 時上游 switch 不需要重新學 MAC。</p></div>
+    <div class="card feat"><span class="tag">接入點</span><h4>Serving / Target AP MLD</h4>
+      <p>實際收發空中訊框的 AP MLD。持有的是 <b>link 層狀態</b>：每條 link 的 AID、rate control、省電狀態、TWT、Block Ack scoreboard、該 BSS 的 group key（GTK / IGTK / BIGTK）。</p></div>
+    <div class="card feat"><span class="tag">終端</span><h4>non-AP MLD（STA）</h4>
+      <p>與 SMD-ME 建立一次 association / 金鑰後，在 SMD 內移動只需和目標 AP MLD「建立 link」並「切換資料路徑」。決定何時漫遊的主導權仍主要在 STA（AP 可用 BTM 建議）。</p></div>
+  </div>
+  <div class="tbl-wrap" style="margin-top:14px">
+  <table>
+    <thead><tr><th>狀態</th><th>傳統漫遊（含 11r）</th><th>SMD 漫遊</th></tr></thead>
+    <tbody>
+      <tr><td>Association / AID</td><td>每台 AP 各自建立，漫遊要 reassociation</td><td class="hl">association 綁 SMD-ME 不變；只在目標 AP MLD 配新 AID / link</td></tr>
+      <tr><td>PTK（unicast key）</td><td>每次漫遊重新推導（FT 縮短但仍要交換）</td><td class="hl">與 SMD-ME 協商的 PTKSA 延續（或在準備階段預先推導，依 Draft）</td></tr>
+      <tr><td>GTK / IGTK / BIGTK</td><td>reassoc 時由新 AP 下發</td><td>每個 BSS 不同 → 仍要在準備回應中下發目標 AP 的 group key</td></tr>
+      <tr><td>Block Ack 協議</td><td>失效，要重新 ADDBA</td><td class="hl">協議與 SN / window 一起轉移，不必重新 ADDBA</td></tr>
+      <tr><td>PN / replay counter</td><td>新金鑰從 0 開始</td><td class="hl">需把 TX PN 與 RX replay counter 轉給目標 AP，保持連續</td></tr>
+      <tr><td>QoS / SCS / TWT 協議</td><td>多半要重新協商</td><td>可隨 context 轉移（目標 AP 依自身資源決定接受與否）</td></tr>
+      <tr><td>上游 L2 轉送表</td><td>要靠 STA 送封包或 AP 送 L2 update 讓 switch 重新學習</td><td class="hl">STA 的 MAC 位於 SMD-ME 之後，對 DS 不變</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>8.2 前置：第一次進入 SMD</h3>
+  <ol>
+    <li><b>發現：</b>AP MLD 在 Beacon / Probe Response 中宣告自己屬於哪個 SMD（SMD 識別資訊），並透過 RNR / Neighbor Report 列出同一 SMD 的其他 AP MLD。</li>
+    <li><b>認證與 association：</b>STA 以一般流程（SAE 或 802.1X）認證並 associate；差別在於安全關係的對端是 <b>SMD-ME</b>，所以 PMK / PTK 的作用範圍是整個 SMD，而不是單一 AP。</li>
+    <li><b>能力協商：</b>雙方交換是否支援 SMD 漫遊，STA 取得 SMD 內可用的候選 AP MLD 清單，之後就可以直接做「準備 → 執行」，不再走 Authentication / Reassociation。</li>
+  </ol>
+
+  <h3>8.3 一次漫遊的完整訊框流程</h3>
+  <figure>
+    <svg viewBox="0 0 760 610" role="img" aria-label="SMD 漫遊的訊框序列圖：量測、準備、執行、收尾四個階段">
+      <defs>
+        <marker id="sq" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--muted)"/></marker>
+        <marker id="sqg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--c3)"/></marker>
+      </defs>
+      <g font-size="11">
+        <!-- phase bands -->
+        <rect x="0" y="62" width="760" height="88" fill="var(--code)" opacity=".55"/>
+        <rect x="0" y="158" width="760" height="190" fill="var(--accent-soft)" opacity=".7"/>
+        <rect x="0" y="356" width="760" height="148" fill="var(--warn-soft)" opacity=".9"/>
+        <rect x="0" y="512" width="760" height="92" fill="var(--code)" opacity=".55"/>
+        <text x="6" y="76" font-weight="700" class="muted">Phase 0 量測 / 決策</text>
+        <text x="6" y="172" font-weight="700" style="fill:var(--accent)">Phase 1 準備（make）</text>
+        <text x="6" y="370" font-weight="700" style="fill:var(--warn)">Phase 2 執行（switch）</text>
+        <text x="6" y="526" font-weight="700" class="muted">Phase 3 收尾（break）</text>
+        <!-- lane headers -->
+        <rect x="30" y="8" width="120" height="40" rx="8" fill="var(--c3)"/><text x="90" y="25" text-anchor="middle" style="fill:#fff" font-weight="700" font-size="12">STA</text><text x="90" y="40" text-anchor="middle" style="fill:#fff">non-AP MLD</text>
+        <rect x="230" y="8" width="120" height="40" rx="8" fill="var(--c1)"/><text x="290" y="25" text-anchor="middle" style="fill:#fff" font-weight="700" font-size="12">Current AP</text><text x="290" y="40" text-anchor="middle" style="fill:#fff">serving AP MLD</text>
+        <rect x="430" y="8" width="120" height="40" rx="8" fill="var(--c1)" opacity=".75"/><text x="490" y="25" text-anchor="middle" style="fill:#fff" font-weight="700" font-size="12">Target AP</text><text x="490" y="40" text-anchor="middle" style="fill:#fff">target AP MLD</text>
+        <rect x="620" y="8" width="120" height="40" rx="8" fill="var(--c4)"/><text x="680" y="25" text-anchor="middle" style="fill:#fff" font-weight="700" font-size="12">SMD-ME</text><text x="680" y="40" text-anchor="middle" style="fill:#fff">錨點 / DS 介面</text>
+        <!-- lifelines -->
+        <g stroke="var(--line)" stroke-width="1.5">
+          <line x1="90" y1="48" x2="90" y2="604"/><line x1="290" y1="48" x2="290" y2="604"/>
+          <line x1="490" y1="48" x2="490" y2="604"/><line x1="680" y1="48" x2="680" y2="604"/>
+        </g>
+        <!-- phase 0 -->
+        <line x1="288" y1="104" x2="92" y2="104" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#sq)"/>
+        <text x="190" y="98" text-anchor="middle">Neighbor Report / BTM 建議</text>
+        <line x1="488" y1="134" x2="92" y2="134" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#sq)"/>
+        <text x="390" y="128" text-anchor="middle">Beacon / Probe Resp（含 SMD 資訊）→ STA 量 RSSI</text>
+        <!-- phase 1 -->
+        <line x1="92" y1="196" x2="288" y2="196" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#sq)"/>
+        <text x="190" y="190" text-anchor="middle">① 漫遊準備請求</text>
+        <line x1="292" y1="226" x2="678" y2="226" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#sq)"/>
+        <text x="585" y="220" text-anchor="middle">② 轉移請求（經 DS）</text>
+        <line x1="678" y1="254" x2="492" y2="254" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#sq)"/>
+        <text x="585" y="248" text-anchor="middle">③ 下發 STA context</text>
+        <line x1="492" y1="282" x2="678" y2="282" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#sq)"/>
+        <text x="585" y="276" text-anchor="middle">④ 接受：AID、link 參數</text>
+        <line x1="288" y1="310" x2="92" y2="310" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#sq)"/>
+        <text x="190" y="304" text-anchor="middle">⑤ 準備回應（+ 目標 GTK 等）</text>
+        <line x1="92" y1="336" x2="288" y2="336" stroke="var(--c3)" stroke-width="5" opacity=".7"/>
+        <text x="300" y="340" style="fill:var(--c3)" font-weight="700">資料仍走 Current AP，不中斷</text>
+        <!-- phase 2 -->
+        <line x1="92" y1="392" x2="288" y2="392" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#sq)"/>
+        <text x="190" y="386" text-anchor="middle">⑥ 執行指示（切換點）</text>
+        <line x1="292" y1="422" x2="678" y2="422" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#sq)"/>
+        <text x="585" y="416" text-anchor="middle">⑦ 停 DL，交出未送封包 + SN/PN</text>
+        <line x1="678" y1="452" x2="492" y2="452" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#sq)"/>
+        <text x="585" y="446" text-anchor="middle">⑧ 轉送緩衝；DS 路徑改指 Target</text>
+        <line x1="96" y1="488" x2="484" y2="488" stroke="var(--c3)" stroke-width="5" opacity=".7" marker-end="url(#sqg)" marker-start="url(#sqg)"/>
+        <text x="290" y="480" text-anchor="middle" style="fill:var(--c3)" font-weight="700">⑨ 資料改走 Target（SN / PN / BA 延續）</text>
+        <!-- phase 3 -->
+        <rect x="190" y="540" width="200" height="44" rx="6" fill="var(--panel)" stroke="var(--c1)"/>
+        <text x="290" y="558" text-anchor="middle">⑩ 釋放 AID / 佇列</text>
+        <text x="290" y="574" text-anchor="middle" class="muted">短暫保留 context 以便回退</text>
+        <rect x="590" y="540" width="164" height="44" rx="6" fill="var(--panel)" stroke="var(--c4)"/>
+        <text x="672" y="558" text-anchor="middle">更新 serving AP 記錄</text>
+        <text x="672" y="574" text-anchor="middle" class="muted">可再次漫遊</text>
+      </g>
+    </svg>
+    <figcaption>圖 3a：SMD 漫遊序列圖。準備階段與資料傳輸重疊（make-before-break），真正的中斷只發生在 ⑥–⑨ 的切換窗口。訊框名稱為功能性描述，實際名稱與 ②–④ 走 DS 或空中依 Draft 而定。</figcaption>
+  </figure>
+
+  <h3>8.4 逐步拆解：STA 與 AP 各做了什麼</h3>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>步驟</th><th>STA（non-AP MLD）</th><th>Current AP MLD</th><th>Target AP MLD / SMD-ME</th></tr></thead>
+    <tbody>
+      <tr><td><b>0 量測決策</b></td>
+        <td>背景掃描或在 EMLSR / 多 radio 空檔聽目標 AP 的 Beacon；比較 RSSI、負載、可用 link；依自身 policy 決定要不要走、去哪台。</td>
+        <td>提供 Neighbor Report（11k）；若發現 STA 鏈路變差或要做負載平衡，送 BTM Request（11v）建議目標。</td>
+        <td>持續廣播 SMD 資訊與 BSS 負載；controller 端可彙整各 AP 的量測，協助挑目標。</td></tr>
+      <tr><td><b>① 準備請求</b></td>
+        <td>在<b>現有 link</b> 上送出受保護的準備請求，帶目標 AP MLD 識別、想在目標建立的 link 與能力、要帶過去的協議（BA、TWT、SCS…）。</td>
+        <td>驗證請求（已有 PTKSA，訊框受保護），轉給 SMD-ME。</td>
+        <td>—</td></tr>
+      <tr><td><b>②③ context 轉移</b></td>
+        <td>照常收發資料，不等待。</td>
+        <td>打包 STA context：能力、link 設定、安全相關資訊、每個 TID 的 BA 協議與 SN、TX PN / RX replay counter 快照、QoS / TWT / 省電狀態。</td>
+        <td>SMD-ME 把 context 交給 Target；Target 做 admission control（資源夠不夠、能否接受各協議）。</td></tr>
+      <tr><td><b>④⑤ 準備回應</b></td>
+        <td>收下目標 link 的參數、AID、目標 BSS 的 GTK / IGTK / BIGTK（以 PTK 加密保護），預先設定好目標 link 的硬體 / 韌體狀態。</td>
+        <td>把結果（接受 / 部分接受 / 拒絕 + 原因）回給 STA。</td>
+        <td>為 STA 配置 AID 與 link、預留佇列與 BA reorder buffer；此時<b>還不送 DL 資料</b>給 STA。</td></tr>
+      <tr><td><b>⑥ 執行指示</b></td>
+        <td>確認目標 link 品質足夠後，送出執行指示（時間點由 STA 主導；也可能約定在某個時刻或由首個目標 link 訊框觸發）。從此 UL 改送 Target。</td>
+        <td>停止排程新的 DL；把已送出但未被 ACK 的 MPDU、佇列中的封包狀態凍結。</td>
+        <td>—</td></tr>
+      <tr><td><b>⑦⑧ 資料路徑切換</b></td>
+        <td>RX 端保持同一個 reorder buffer / replay counter，所以從 Target 來的 MPDU 只要 SN、PN 連續就能直接交給上層。</td>
+        <td>把未送 / 未確認的 DL 封包（含 SN）交回 SMD-ME 或直接轉給 Target，以及最新的 TX PN。</td>
+        <td>SMD-ME 把 DS 方向的轉送目的地改成 Target；Target 接手 DL，從交接的 SN / PN 繼續送，並處理可能的重複封包。</td></tr>
+      <tr><td><b>⑨ 恢復傳輸</b></td>
+        <td>開始在目標 link 收發，沿用既有 BA 協議，不送 ADDBA；rate control 從目標 link 的量測重新收斂。</td>
+        <td>—</td>
+        <td>Target 以既有 BA 協議回 BlockAck；省電、TWT 依轉移後的設定運作。</td></tr>
+      <tr><td><b>⑩ 收尾</b></td>
+        <td>拆除與 Current AP 的 link（或保留作為下次快速回退的候選，依實作）。</td>
+        <td>釋放 AID、佇列、BA scoreboard；短時間保留 context 以便切換失敗時回退。</td>
+        <td>SMD-ME 記錄新的 serving AP；下次漫遊從 Target 出發重複相同流程。</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>8.5 和 802.11r FT 逐項對照</h3>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>階段</th><th>802.11r FT（over-the-air）</th><th>SMD 漫遊</th><th>中斷影響</th></tr></thead>
+    <tbody>
+      <tr><td>決策前</td><td>同（11k/v 輔助）</td><td>同（11k/v 輔助）</td><td>無</td></tr>
+      <tr><td>建立安全</td><td>FT Authentication 2 訊框，推導新 PTK（R0/R1 key hierarchy）</td><td class="hl">不需要，PTKSA 已綁 SMD-ME</td><td>FT：STA 必須離開原通道到目標通道交換</td></tr>
+      <tr><td>建立關聯</td><td>Reassociation Req/Resp，新 AID</td><td class="hl">準備請求 / 回應，<b>在原 link 上</b>完成</td><td>FT：此時已和舊 AP 斷開</td></tr>
+      <tr><td>Block Ack</td><td>重新 ADDBA，每個 TID 一次</td><td class="hl">隨 context 轉移</td><td>FT：ADDBA 完成前無法聚合，吞吐低</td></tr>
+      <tr><td>上游轉送</td><td>靠 L2 update / 首個 UL 封包讓 switch 學習</td><td class="hl">SMD-ME 內部切換</td><td>FT：學習完成前的 DL 會被送到舊 AP 而遺失</td></tr>
+      <tr><td>舊 AP 緩衝</td><td>通常直接丟棄</td><td class="hl">交接給 Target</td><td>FT：造成 TCP 重傳 / 語音破音</td></tr>
+      <tr><td><b>典型中斷</b></td><td>數十 ms（含換通道、交換、ADDBA）</td><td class="hl">目標接近 0：只剩 ⑥–⑨ 的切換窗口</td><td></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>8.6 資料平面的細節：為什麼能做到「不掉包」</h3>
+  <div class="grid g2">
+    <div class="card feat"><span class="tag">DL</span><h4>下行封包不遺失</h4>
+      <p>Current AP 在 ⑥ 之後不再排程新 DL；已在空中但未被 ACK 的 MPDU 與佇列內封包連同 SN 交接給 Target，由 Target 重送。STA 端 reorder buffer 不重置，所以重複收到的會被丟棄、缺的會被補上。</p></div>
+    <div class="card feat"><span class="tag">UL</span><h4>上行封包不遺失</h4>
+      <p>STA 在 ⑥ 前的 UL 走 Current；之後改送 Target。Current 已收到但尚未往 DS 送出的 UL 封包要先送完，SMD-ME 需處理 UL 亂序（兩個 AP 的 backhaul 延遲可能不同）。</p></div>
+    <div class="card feat"><span class="tag">安全</span><h4>PN 與 replay 保護</h4>
+      <p>若 PTK 在 AP MLD 間共用，<b>同一把金鑰下 PN 絕不能重複使用</b>：Current 必須先停止用該金鑰發送，把最後 TX PN 交給 Target 接續；RX replay counter 同理，否則會被當成重放攻擊而丟包。這是 ⑥–⑦ 要有明確順序的主因。</p></div>
+    <div class="card feat"><span class="tag">BA</span><h4>Block Ack 與 SN 空間</h4>
+      <p>每個 TID 的 SN、WinStart、buffer size 一起轉移；Target 接手後直接用既有協議聚合。若 Target 的 buffer size 能力較小，需在準備階段協商調整，避免切換後 window 不一致。</p></div>
+    <div class="card feat"><span class="tag">多 link</span><h4>與 MLO 的結合</h4>
+      <p>STA 可以在 Target 建立和 Current 不同的 link 組合（例如從 5+6 GHz 換成 2.4+6 GHz）。EMLSR STA 可利用其中一條 radio 先在目標 link 做量測與準備，縮短切換。</p></div>
+    <div class="card feat"><span class="tag">失敗</span><h4>回退與異常</h4>
+      <p>準備階段被拒：STA 仍在 Current，不受影響。執行後目標 link 失敗：Current 短暫保留的 context 讓 STA 可回退；超時則回到一般 association 流程。Target 拒絕部分協議（如 TWT）時，STA 需在切換後重新協商。</p></div>
+  </div>
+
+  <h3>8.7 對系統設計的直接影響</h3>
+  <ul>
+    <li><b>Backhaul 延遲預算：</b>②③④ 與 ⑦⑧ 都走 DS。準備階段可容忍較長延遲（資料不中斷），但 ⑦⑧ 直接加到中斷時間上；有線 backhaul 一般為亞毫秒級，無線 Mesh backhaul 需特別評估。</li>
+    <li><b>SMD-ME 放哪裡：</b>放在 controller → 集中管理、容易擴展，但多一跳；與某台 AP 共置 → 延遲低，但該 AP 成為單點故障。若金鑰與加解密集中在 SMD-ME（類似企業級 tunnel 架構），AP 端就不需要同步 PN，但資料面全部經過 SMD-ME。</li>
+    <li><b>Context 格式與版本：</b>不同廠商 / 不同韌體的 AP 混在同一 SMD 時，context 的編碼與可轉移項目必須一致；建議在韌體中把「可轉移 context」做成獨立、可序列化的資料結構。</li>
+    <li><b>STA 端：</b>漫遊決策 policy（何時送 ① 與 ⑥）決定實際體驗；driver 要能同時維護兩組 link 狀態，並在 ⑥ 的瞬間原子性地切換 TX 路徑與金鑰 / PN 狀態。</li>
+    <li><b>量測：</b>漫遊 KPI 應拆成「準備耗時」與「切換中斷時間（⑥→⑨ 第一個成功 MPDU）」，並統計切換前後的 SN gap 與重複封包數。</li>
+  </ul>
+</section>
+
+<section id="syseng">
+  <h2><span class="num">8</span>對系統設計的影響</h2>
+  <p class="intro">依子系統整理：哪些可以沿用 Wi-Fi 7，哪些需要新增或重新評估。</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>子系統</th><th>可沿用 Wi-Fi 7</th><th>需新增 / 重新評估</th></tr></thead>
+    <tbody>
+      <tr><td><b>RF Front-End</b></td><td>320 MHz 頻寬、4096-QAM 的 EVM 要求、6 GHz FEM</td><td>NPCA / DSO 的快速頻率與 primary 切換時間；DRU 下 6 GHz PSD 與 PA back-off 計算；ELR 的靈敏度預算</td></tr>
+      <tr><td><b>Baseband PHY</b></td><td>FFT 大小、MIMO 架構、MRU</td><td>UEQM 的 parser / detector；2× LDPC decoder；新 MCS 表；UHR preamble 偵測</td></tr>
+      <tr><td><b>Lower MAC (HW/FW)</b></td><td>MLO 架構、A-MPDU、OFDMA 排程框架</td><td>NPCA 狀態機與 OBSS 追蹤；MAPC trigger / 回應時序（SIFS 等級）；Co-SR 功率限制；P-EDCA</td></tr>
+      <tr><td><b>Upper MAC / Driver</b></td><td>802.11r/k/v、WPA3</td><td>SMD context 管理；IDC 訊令與 BT/蜂巢 coex 整合；AP Power Save 排程</td></tr>
+      <tr><td><b>AP 系統 / Controller</b></td><td>EasyMesh、雲端管理</td><td>跨 AP 量測資料庫（RSSI / CSI / 負載）；MAPC 配對決策；SMD 的 context 同步與 backhaul QoS</td></tr>
+      <tr><td><b>時間同步</b></td><td>TSF</td><td>Co-TDMA / Co-RTWT 需 AP 間 µs 級對齊；Co-BF 需更嚴格的頻率 / 時間同步</td></tr>
+      <tr><td><b>電源</b></td><td>TWT 支援</td><td>AP 端可睡眠；EMLSR 切換功耗；更大 LDPC decoder 的動態功耗</td></tr>
+      <tr><td><b>測試 / 驗證</b></td><td>RF 傳導測試、吞吐測試</td><td>多 AP OTA 測試床、可重現的 OBSS 干擾產生、延遲分佈 (P95/P99) 與漫遊中斷量測</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>9.1 延遲預算拆解（範例思考框架）</h3>
+  <p>Wi-Fi 8 的 KPI 是 P95 延遲，因此要把端對端延遲拆成可量測的段落，逐段找出 Wi-Fi 8 功能能改善的位置：</p>
+  <figure>
+    <svg viewBox="0 0 760 120" role="img" aria-label="延遲預算拆解">
+      <g font-size="12">
+        <rect x="0"   y="20" width="140" height="40" fill="var(--c4)" opacity=".85"/><text x="70"  y="45" text-anchor="middle" style="fill:#fff">Host / Driver 排隊</text>
+        <rect x="140" y="20" width="220" height="40" fill="var(--c2)" opacity=".85"/><text x="250" y="45" text-anchor="middle" style="fill:#fff">通道接入等待（OBSS）</text>
+        <rect x="360" y="20" width="120" height="40" fill="var(--c1)" opacity=".85"/><text x="420" y="45" text-anchor="middle" style="fill:#fff">空中傳輸</text>
+        <rect x="480" y="20" width="160" height="40" fill="var(--c3)" opacity=".85"/><text x="560" y="45" text-anchor="middle" style="fill:#fff">重傳 / 漫遊中斷</text>
+        <rect x="640" y="20" width="120" height="40" fill="var(--muted)" opacity=".6"/><text x="700" y="45" text-anchor="middle" style="fill:#fff">Backhaul</text>
+        <text x="250" y="85" text-anchor="middle" class="muted">NPCA · MAPC · P-EDCA · Co-RTWT</text>
+        <text x="420" y="85" text-anchor="middle" class="muted">新 MCS · UEQM</text>
+        <text x="560" y="85" text-anchor="middle" class="muted">2×LDPC · SMD · IDC</text>
+        <text x="70" y="85" text-anchor="middle" class="muted">（系統軟體）</text>
+      </g>
+    </svg>
+    <figcaption>圖 4：尾端延遲多半來自「通道接入等待」與「重傳 / 漫遊」，這正是 Wi-Fi 8 MAC 功能的主要著力點。（區塊寬度為示意）</figcaption>
+  </figure>
+</section>
+
+<section id="glossary">
+  <h2><span class="num">9</span>名詞表</h2>
+  <input class="search" id="gq" type="search" placeholder="搜尋名詞，例如 NPCA、TWT…" aria-label="搜尋名詞">
+  <dl class="gloss" id="gloss">
+    <div><dt>UHR</dt><dd>Ultra High Reliability，802.11bn 的 PHY/MAC 名稱（對應 HE、EHT）。</dd></div>
+    <div><dt>TGbn</dt><dd>IEEE 802.11 負責制定 802.11bn 的 Task Group。</dd></div>
+    <div><dt>MAPC</dt><dd>Multi-AP Coordination，多 AP 協作框架。</dd></div>
+    <div><dt>Sharing AP</dt><dd>取得 TXOP 並分享給其他 AP 的發起端。</dd></div>
+    <div><dt>Shared AP</dt><dd>受邀使用 Sharing AP TXOP 資源的 AP。</dd></div>
+    <div><dt>Co-SR</dt><dd>Coordinated Spatial Reuse，以功率控制實現同時傳輸。</dd></div>
+    <div><dt>Co-BF</dt><dd>Coordinated Beamforming，以 nulling 抑制對鄰 BSS 的干擾。</dd></div>
+    <div><dt>Co-TDMA</dt><dd>Coordinated TDMA，在 TXOP 內分時給不同 AP。</dd></div>
+    <div><dt>Co-RTWT</dt><dd>Coordinated Restricted TWT，跨 AP 對齊保護低延遲時段。</dd></div>
+    <div><dt>NPCA</dt><dd>Non-Primary Channel Access，主通道忙時使用非主通道。</dd></div>
+    <div><dt>DSO</dt><dd>Dynamic Sub-band Operation，動態將窄頻 STA 分配到寬頻 BSS 的子頻帶。</dd></div>
+    <div><dt>DRU</dt><dd>Distributed Resource Unit，tone 分散於較寬頻寬的 RU，突破 PSD 限制。</dd></div>
+    <div><dt>UEQM</dt><dd>Unequal Modulation，不同 spatial stream 使用不同調變。</dd></div>
+    <div><dt>ELR</dt><dd>Enhanced Long Range，長距離 PPDU 格式。</dd></div>
+    <div><dt>SMD</dt><dd>Seamless Mobility Domain，跨 AP 無縫漫遊的邏輯網域。</dd></div>
+    <div><dt>SMD-ME</dt><dd>SMD Management Entity，SMD 的錨點：持有 STA 的 association 與 PTKSA，並作為對 DS 的橋接點。</dd></div>
+    <div><dt>FT</dt><dd>Fast BSS Transition（802.11r），以預先推導的金鑰階層縮短漫遊時的認證交換。</dd></div>
+    <div><dt>BTM</dt><dd>BSS Transition Management（802.11v），AP 建議 STA 漫遊到特定 AP。</dd></div>
+    <div><dt>PN</dt><dd>Packet Number，CCMP/GCMP 的封包編號，用於防重放；同一金鑰下不可重複。</dd></div>
+    <div><dt>IDC</dt><dd>In-Device Coexistence，裝置內多無線電共存訊令。</dd></div>
+    <div><dt>P-EDCA</dt><dd>Prioritized EDCA，針對低延遲流量的優先通道接入機制。</dd></div>
+    <div><dt>MLO</dt><dd>Multi-Link Operation（Wi-Fi 7 引入），多鏈路同時運作。</dd></div>
+    <div><dt>EMLSR</dt><dd>Enhanced Multi-Link Single Radio，多條 link 同時聆聽，收到 initial Control frame 後集中到單一 link 收發（802.11be 35.3.17）。</dd></div>
+    <div><dt>EMLMR</dt><dd>Enhanced Multi-Link Multi-Radio，多 radio 用戶端在交換期間把 TX/RX chain 集中到某 link 以提高 NSS（802.11be 35.3.18）。</dd></div>
+    <div><dt>MLSR</dt><dd>業界用語，指未開啟 EMLSR 的 single-radio non-AP MLD：一次只在一條 link 上聆聽與收發。</dd></div>
+    <div><dt>STR</dt><dd>Simultaneous Transmit and Receive，多鏈路可同時收發。</dd></div>
+    <div><dt>NSTR</dt><dd>Nonsimultaneous Transmit and Receive，一條 link 傳送時另一條 link 無法接收的 link pair。</dd></div>
+    <div><dt>EML OMN</dt><dd>EML Operating Mode Notification frame，用來啟用 / 停用 EMLSR 或 EMLMR 並更新參數。</dd></div>
+    <div><dt>Initial Control frame</dt><dd>AP 對 EMLSR 用戶端發起交換時先送的 MU-RTS / BSRP Trigger（non-HT 6/12/24 Mb/s，含 padding）。</dd></div>
+    <div><dt>TWT</dt><dd>Target Wake Time，STA 與 AP 約定喚醒時段（SP）交換資料，其餘時間 doze；分 individual 與 broadcast 兩種。</dd></div>
+    <div><dt>R-TWT</dt><dd>Restricted TWT（802.11be 35.8），為延遲敏感 TID 保留的 broadcast TWT SP；支援的 STA 必須在 SP 開始前結束 TXOP。</dd></div>
+    <div><dt>TWT SP</dt><dd>TWT Service Period，約定的喚醒交換時段。</dd></div>
+    <div><dt>OBSS</dt><dd>Overlapping BSS，鄰近重疊的其他網路。</dd></div>
+    <div><dt>TXOP</dt><dd>Transmit Opportunity，取得通道後可連續傳輸的時間。</dd></div>
+    <div><dt>PSD</dt><dd>Power Spectral Density，6 GHz 法規常以此限制發射功率。</dd></div>
+    <div><dt>SFD</dt><dd>Specification Framework Document，TG 收斂功能時的框架文件。</dd></div>
+  </dl>
+</section>
+
+<section id="refs">
+  <h2><span class="num">10</span>參考資料與延伸閱讀</h2>
+  <div class="grid g2">
+    <div class="card"><b>一手來源（標準）</b>
+      <ul>
+        <li><a href="https://www.ieee802.org/11/Reports/tgbn_update.htm" target="_blank" rel="noopener">IEEE 802.11 TGbn 狀態頁</a></li>
+        <li><a href="https://www.ieee802.org/11/Reports/802.11_Timelines.htm" target="_blank" rel="noopener">IEEE 802.11 官方時程表</a></li>
+        <li><a href="https://mentor.ieee.org/802.11/documents" target="_blank" rel="noopener">IEEE 802.11 Mentor 文件庫</a>（搜尋「TGbn」、「SFD」、「UHR」）</li>
+        <li>802.11bn Draft（需 IEEE 802.11 成員或 IEEE SA 帳號取得）</li>
+      </ul></div>
+    <div class="card"><b>產業與認證</b>
+      <ul>
+        <li><a href="https://www.wi-fi.org/" target="_blank" rel="noopener">Wi-Fi Alliance</a>（Wi-Fi 8 認證動態）</li>
+        <li>晶片廠技術白皮書（搜尋「Wi-Fi 8 UHR whitepaper」）</li>
+        <li>IEEE Communications Magazine / arXiv：搜尋「IEEE 802.11bn」綜述論文</li>
+        <li>測試儀器廠的 802.11bn 應用筆記（PHY 量測、MAPC 測試）</li>
+      </ul></div>
+  </div>
+  <div class="tip"><b>建議閱讀順序：</b>① 本頁總覽 → ② TGbn SFD（了解功能清單與定義） → ③ 802.11bn 綜述論文（理解動機與模擬結果） → ④ 依負責子系統讀 Draft 對應章節（UHR PHY 條款、MAC 的 MAPC / NPCA / SMD 條款）。</div>
+</section>
+<footer>
+  本頁為學習用技術導讀，整理自公開的 IEEE 802.11 資訊與產業資料，內容可能落後最新 Draft；涉及設計決策時請以官方文件為準。最後更新：2026-11-22。
+</footer>
+</main>
+</div>
+
+<script src="assets/site.js"></script>
+</body>
+</html>

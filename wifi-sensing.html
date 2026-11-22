@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wi-Fi Sensing 導讀</title>
+<meta name="description" content="IEEE 802.11bf（WLAN Sensing）導讀：角色、session、TB / non-TB 量測交換、SBP、DMG sensing 與條文速查">
+<script>(function(){var t=null;try{t=new URLSearchParams(location.search).get("theme")}catch(e){}if(t!=="dark"&&t!=="light"){try{t=localStorage.getItem("wifi8-theme")}catch(e){}}if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t)})();</script>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<div class="layout">
+<nav class="toc" id="toc">
+  <div class="sitenav"><a href="index.html">首頁</a><a href="wifi8.html">Wi-Fi 8</a><a href="wifi7.html">Wi-Fi 7</a><a href="wifi-sensing.html" class="cur" aria-current="page">Wi-Fi Sensing</a><a href="compare.html">6/7/8 比較</a></div>
+  <div class="brand">Wi-Fi Sensing · 802.11bf</div>
+  <div class="sub">WLAN Sensing 導讀與速查</div>
+  <button class="menu-btn" id="menuBtn" aria-expanded="false">目錄</button>
+  <ol>
+    <li><a href="#overview">1. 總覽</a></li>
+    <li><a href="#flow">2. 程序全貌</a></li>
+    <li><a href="#roles">3. 角色</a></li>
+    <li><a href="#session">4. 能力交換與 Session</a></li>
+    <li><a href="#tb">5. TB 量測交換</a></li>
+    <li><a href="#nontb">6. Non-TB 量測交換</a></li>
+    <li><a href="#sbp">7. SBP（代理量測）</a></li>
+    <li><a href="#report">8. 量測回報（CSI）</a></li>
+    <li><a href="#dmg">9. DMG sensing（60 GHz）</a></li>
+    <li><a href="#spec-bf">10. 802.11bf 規格速查</a></li>
+    <li><a href="#glossary">11. 名詞表</a></li>
+    <li><a href="#refs">12. 參考資料</a></li>
+  </ol>
+  <button class="theme-btn" id="themeBtn">切換深 / 淺色</button>
+</nav>
+
+<main>
+<header class="hero">
+  <h1>Wi-Fi Sensing（IEEE 802.11bf）<br>WLAN Sensing 導讀與速查</h1>
+  <p class="lead">802.11bf 讓 Wi-Fi 在通訊之外，能用既有的 PHY / MAC 做「感測」：從無線訊號的變化（CSI）推估物體的距離、速度與動作，用於存在偵測、動作偵測、手勢分類、呼吸量測等。本頁依 <b>IEEE 802.11bf-2025</b> 正式版整理，並以作者 2023 年的介紹簡報作為導讀主線。</p>
+  <div class="chips">
+    <span class="chip">IEEE 802.11bf-2025</span><span class="chip">HE / EHT sensing（sub-7 GHz）</span>
+    <span class="chip">DMG sensing（60 GHz）</span><span class="chip">TB / non-TB / SBP</span>
+  </div>
+  <div class="tip"><b>閱讀建議：</b>先看 2 的流程圖與 3 的角色，再依需求讀 5（AP 發起的 TB）或 6（non-AP 發起的 non-TB）；要查欄位與條文時用 10 的規格速查，頁碼皆為 PDF 頁（= 印刷頁 + 1）。</div>
+</header>
+
+<!-- 1 -->
+<section id="overview">
+  <h2><span class="num">1</span>總覽</h2>
+  <p class="intro">WLAN sensing 利用 802.11 的 PHY 與 MAC 功能做環境量測，估計物體的 range、velocity 與 motion（4.11，PDF p.27–28）。應用大致分三類（取自簡報）：<b>Detection</b>（二元分類，如有無人）、<b>Recognition</b>（多類別分類，如手勢）、<b>Estimation</b>（數值估計，如大小、長度、角度、距離）。</p>
+  <div class="grid g4">
+    <div class="card kpi"><div class="v">4</div><div class="l">個程序：sensing、SBP、DMG sensing、DMG SBP</div></div>
+    <div class="card kpi"><div class="v">2</div><div class="l">種量測交換：TB（AP 發起）、non-TB（non-AP 發起）</div></div>
+    <div class="card kpi"><div class="v">5</div><div class="l">種 Sensing Trigger 子類型</div></div>
+    <div class="card kpi"><div class="v">201</div><div class="l">個條文單位可在 12 搜尋</div></div>
+  </div>
+  <div class="tbl-wrap" style="margin-top:14px">
+  <table>
+    <thead><tr><th>程序</th><th>誰執行</th><th>做什麼</th><th>條文</th></tr></thead>
+    <tbody>
+      <tr><td>Sensing procedure</td><td>HE / EHT STA</td><td>直接執行 sensing 量測</td><td>11.55.1</td></tr>
+      <tr><td>SBP procedure</td><td>non-AP HE/EHT STA 請 AP 代辦</td><td>Sensing By Proxy：由 AP 代為量測並回報</td><td>11.55.2</td></tr>
+      <tr><td>DMG sensing procedure</td><td>DMG STA</td><td>60 GHz 的 sensing（monostatic / bistatic / multistatic / passive）</td><td>11.55.3</td></tr>
+      <tr><td>DMG SBP procedure</td><td>non-AP、non-PCP 的 DMG STA</td><td>DMG 版本的代理量測</td><td>11.55.4</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- 2 -->
+<section id="flow">
+  <h2><span class="num">2</span>程序全貌</h2>
+  <p class="intro">一次 sensing procedure 由「能力交換 → 建立一或多個 measurement session → 每個 session 內執行一次以上 measurement exchange → 終止」組成（11.55.1.1，PDF p.136–137）。</p>
+  <figure>
+    <svg viewBox="0 0 760 120" role="img" aria-label="Sensing procedure 流程">
+      <defs><marker id="fa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--muted)"/></marker></defs>
+      <g font-size="13" text-anchor="middle">
+        <rect x="8" y="20" width="160" height="80" rx="10" fill="var(--accent-soft)" stroke="var(--c1)" stroke-width="1.5"/>
+        <text x="88" y="48" font-weight="700">① 能力交換</text><text x="88" y="70" class="muted" font-size="11">Sensing Capabilities</text><text x="88" y="86" class="muted" font-size="11">element</text>
+        <rect x="208" y="20" width="160" height="80" rx="10" fill="var(--accent-soft)" stroke="var(--c1)" stroke-width="1.5"/>
+        <text x="288" y="48" font-weight="700">② 建立 session</text><text x="288" y="70" class="muted" font-size="11">Measurement Request</text><text x="288" y="86" class="muted" font-size="11">/ Response</text>
+        <rect x="408" y="20" width="160" height="80" rx="10" fill="var(--accent-soft)" stroke="var(--c2)" stroke-width="2"/>
+        <text x="488" y="48" font-weight="700">③ 量測 exchange</text><text x="488" y="70" class="muted" font-size="11">TB 或 non-TB</text><text x="488" y="86" class="muted" font-size="11">（可重複多次）</text>
+        <rect x="608" y="20" width="144" height="80" rx="10" fill="var(--accent-soft)" stroke="var(--c1)" stroke-width="1.5"/>
+        <text x="680" y="48" font-weight="700">④ 終止</text><text x="680" y="70" class="muted" font-size="11">Termination frame</text><text x="680" y="86" class="muted" font-size="11">或 session 逾時</text>
+        <path d="M168 60 H204" stroke="var(--muted)" stroke-width="2" marker-end="url(#fa)"/>
+        <path d="M368 60 H404" stroke="var(--muted)" stroke-width="2" marker-end="url(#fa)"/>
+        <path d="M568 60 H604" stroke="var(--muted)" stroke-width="2" marker-end="url(#fa)"/>
+      </g>
+    </svg>
+    <figcaption>圖 1：Sensing procedure 的四個階段。一對 STA 之間可同時有多個 session，以不同 Measurement Session ID 區分。</figcaption>
+  </figure>
+  <ul>
+    <li>Session 持續到被明確終止，或 session expiry timer 到期。</li>
+    <li>Initiator 可擔任 sensing transmitter、receiver、兩者，或兩者皆非；responder 至少是 transmitter 或 receiver 其中之一。</li>
+    <li>AP 發起時，已 association 的 non-AP STA 以 <b>AID</b> 識別，未 association 的以 <b>USID</b> 識別。</li>
+    <li>Annex AI 以 AP 對 STA A / B / C 的範例，示範 Session ID 與 Exchange ID 如何指派、重用與終止（PDF p.227）。</li>
+  </ul>
+</section>
+
+<!-- 3 -->
+<section id="roles">
+  <h2><span class="num">3</span>角色</h2>
+  <p class="intro">Sensing 有兩組正交的角色：<b>誰發起</b>（initiator / responder）與<b>誰打 NDP、誰收 NDP</b>（transmitter / receiver）。定義見 3.2（PDF p.25–26）。</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>角色</th><th>定義</th><th>一句話</th></tr></thead>
+    <tbody>
+      <tr><td>Sensing initiator (SI)</td><td>傳送 Sensing Measurement Request frame 發起 sensing procedure 的 HE / EHT STA</td><td>發起的人</td></tr>
+      <tr><td>Sensing responder (SR)</td><td>回應 initiator 並參與 sensing procedure 的 STA</td><td>被邀請的人</td></tr>
+      <tr><td>Sensing transmitter</td><td>傳送用於量測之 PPDU（NDP）的 STA</td><td>打 NDP 的</td></tr>
+      <tr><td>Sensing receiver</td><td>這些 PPDU 的目標接收者，並取得量測結果</td><td>收 NDP 的、算 CSI 的</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="tip"><b>常見混淆：</b>SI / SR 與 transmitter / receiver 不是同一件事。TB 交換中 AP 是 SI，但可以是 transmitter（NDPA sounding）也可以是 receiver（TF sounding）；non-TB 交換中 non-AP STA 是 SI、AP 是 SR。</div>
+  <div class="tbl-wrap" style="margin-top:12px">
+  <table>
+    <thead><tr><th>量測交換</th><th>Sensing initiator</th><th>Sensing responder</th></tr></thead>
+    <tbody>
+      <tr><td>TB（trigger-based）</td><td>AP</td><td>一個或多個 non-AP STA</td></tr>
+      <tr><td>Non-TB</td><td>non-AP STA</td><td>AP</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>此外，SBP 流程另有 <b>SBP initiator</b>（傳送 SBP Request 的 non-AP HE/EHT STA）與 <b>SBP responder</b>（HE/EHT AP）兩個角色（見 7）。</p>
+</section>
+
+<!-- 4 -->
+<section id="session">
+  <h2><span class="num">4</span>能力交換與 Session</h2>
+  <h3>4.1 支援 sensing 的前提</h3>
+  <ul>
+    <li>Sensing STA 須為 HE 或 EHT STA，<code>dot11SensingImplemented = true</code>，Extended Capabilities 的 Sensing field 設 1，且須同時支援 initiator 與 responder 兩種角色（11.55.1.2，PDF p.137–138）。</li>
+    <li>每條 receive chain 的 RSSI 在 −82 至 −20 dBm 範圍需精確到 ±5 dB（95% 信賴區間）。</li>
+  </ul>
+  <h3>4.2 能力交換（11.55.1.3，PDF p.138–139）</h3>
+  <ul>
+    <li><b>Sensing Capabilities element</b>（9.4.2.332）須出現在 Probe Response、(Re)Association Request / Response 與 Sensing Measurement Query frame；Probe Request 中可選。</li>
+    <li>內容涵蓋：支援的最大頻寬、各頻寬最大 TX / RX 空間串流數、LTF 重複與總數、最大並行 session 數、最小量測間隔、是否需被 polling、threshold-based reporting、Ng = 16、SR2SR 支援、最大接收鏈數、「僅 20 MHz sensing transmitter」等（9 octets）。</li>
+    <li>AP 於 Probe Response 將 <b>Responder Needed</b> 設 1，表示需要新的 responder。</li>
+    <li>Non-AP STA 未 association 時，可傳 <b>Sensing Measurement Query</b>（攜帶其能力）請 AP 發起 session；Query 內須含 ISTA Availability Window element。</li>
+  </ul>
+  <h3>4.3 建立 session（11.55.1.4，PDF p.139–145）</h3>
+  <ul>
+    <li>Initiator 傳 <b>Sensing Measurement Request</b>，responder 回 <b>Sensing Measurement Response</b>（Status Code：SUCCESS、REJECTED_WITH_SUGGESTED_SENSING_PARAMETERS、REQUEST_DECLINED）。</li>
+    <li>Session 以 <code>&lt;initiator MAC address, Measurement Session ID&gt;</code> 識別；各 STA 的角色可為 sensing receiver、transmitter 或兩者，操作參數建立後固定不變。</li>
+    <li>Session 逾時 = 2<sup>(Measurement Session Expiry Exponent + 8)</sup> ms；有參與 exchange 就重設 timer。Request / Response 的回覆時限 aSensingFrameExchangeExpiry = 20 ms。</li>
+    <li>AP 發起時須帶 TB Sensing Specific subelement（AID / USID、Poll Assigned、CSI Variation Threshold、SR2SR、RSTA Availability Window）；non-AP 發起則帶 Non-TB Sensing Specific subelement（含 Min Measurement Interval）。</li>
+    <li>Availability window 的 Count 單位為 10 TU，須為 AP Beacon Interval（以 10 TU 計）的倍數。</li>
+  </ul>
+  <h3>4.4 Unassociated STA</h3>
+  <p>未 association 的 non-AP STA 也能建立 session：直接傳含 Non-TB 子元素的 Request，或傳 Query 請 AP 發出 Request，並透過 <b>Comeback</b> 機制（aSensingComebackAfter / Before）與 USID 維持互動（11.55.1.4.2）。若 AP 要求 PMF，須先以 PASN 建立 PTKSA，否則 AP 會丟棄其 Request / Query。</p>
+  <h3>4.5 終止（11.55.1.6）</h3>
+  <p>任一方可隨時以 <b>Sensing Measurement Termination</b> frame 明確終止，只影響該對 STA；或於 session expiry timer 逾時後隱含終止。BSS 參數改變（如 TPE、disabled subchannel bitmap）時，AP 須明確終止與 unassociated STA 的 session。</p>
+</section>
+
+<!-- 5 -->
+<section id="tb">
+  <h2><span class="num">5</span>TB 量測交換（Trigger-Based）</h2>
+  <p class="intro">適用於 AP 為 initiator、一或多個 non-AP STA 為 responder 的 session。由 <b>polling → NDPA sounding → TF sounding → reporting</b> 四個階段組成，各階段間隔 SIFS，且須在 sensing availability window 內進行（11.55.1.5.2，PDF p.146–158）。</p>
+  <figure>
+    <svg viewBox="0 0 760 250" role="img" aria-label="TB sensing measurement exchange 時序示意">
+      <g font-size="12" text-anchor="middle">
+        <text x="8" y="92" font-size="12" font-weight="700" text-anchor="start">AP</text>
+        <text x="8" y="162" font-size="12" font-weight="700" text-anchor="start">STA</text>
+        <!-- phase bands -->
+        <rect x="40" y="26" width="160" height="170" rx="8" fill="var(--accent-soft)" opacity=".65"/>
+        <rect x="206" y="26" width="168" height="170" rx="8" fill="var(--accent-soft)" opacity=".65"/>
+        <rect x="380" y="26" width="168" height="170" rx="8" fill="var(--accent-soft)" opacity=".65"/>
+        <rect x="554" y="26" width="198" height="170" rx="8" fill="var(--accent-soft)" opacity=".65"/>
+        <text x="120" y="44" font-weight="700">Polling</text>
+        <text x="290" y="44" font-weight="700">NDPA sounding</text>
+        <text x="464" y="44" font-weight="700">TF sounding（SR2SI）</text>
+        <text x="653" y="44" font-weight="700">Reporting</text>
+        <!-- AP row -->
+        <rect x="48" y="70" width="70" height="32" rx="5" fill="var(--c1)"/><text x="83" y="90" style="fill:#fff">Polling TF</text>
+        <rect x="214" y="70" width="60" height="32" rx="5" fill="var(--c1)"/><text x="244" y="90" style="fill:#fff">NDPA</text>
+        <rect x="282" y="70" width="84" height="32" rx="5" fill="var(--c2)"/><text x="324" y="90" style="fill:#fff">SI2SR NDP</text>
+        <rect x="388" y="70" width="76" height="32" rx="5" fill="var(--c1)"/><text x="426" y="90" style="fill:#fff">SR2SI TF</text>
+        <rect x="562" y="70" width="84" height="32" rx="5" fill="var(--c1)"/><text x="604" y="90" style="fill:#fff">Report TF</text>
+        <!-- STA row -->
+        <rect x="126" y="140" width="68" height="32" rx="5" fill="var(--c3)"/><text x="160" y="160" style="fill:#fff">CTS-to-self</text>
+        <rect x="472" y="140" width="68" height="32" rx="5" fill="var(--c2)"/><text x="506" y="160" style="fill:#fff">SR2SI NDP</text>
+        <rect x="654" y="140" width="90" height="32" rx="5" fill="var(--c3)"/><text x="699" y="160" style="fill:#fff">Meas. Report</text>
+        <text x="380" y="222" class="muted" font-size="11">橘色 = NDP（量測用封包）；各框之間為 SIFS；示意圖，實際組合依 session 參數而定</text>
+      </g>
+    </svg>
+    <figcaption>圖 2：TB sensing measurement exchange 時序示意（AP 為 sensing initiator）。NDPA sounding 時 AP 是 sensing transmitter；SR2SI TF sounding 時 AP 是 sensing receiver。</figcaption>
+  </figure>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>階段</th><th>AP 傳送</th><th>STA 傳送</th><th>重點規則</th></tr></thead>
+    <tbody>
+      <tr><td>Polling</td><td>Sensing Polling Trigger</td><td>CTS-to-self（HE / EHT TB PPDU）</td><td>每個 RU 恰配一個 STA、不使用 UL MU-MIMO；無人回應則不進入後續階段；<code>More TF</code>=1 表示同一 window 還有額外 TB exchange</td></tr>
+      <tr><td>NDPA sounding</td><td>Sensing NDPA + <b>SI2SR NDP</b></td><td>—</td><td>AP 為 sensing transmitter；BW ≤160 MHz 用 HE Ranging NDP，320 MHz 用 EHT Ranging NDP；NDPA 含 AID11=2044 的 STA Info（Partial TSF、Token）</td></tr>
+      <tr><td>TF sounding<br>SR2SI variant</td><td>SR2SI Sounding Trigger</td><td>多個 STA 以 UL MU-MIMO 同時送 TB Ranging NDP（<b>SR2SI NDP</b>）</td><td>AP 為 sensing receiver；可重複觸發多次</td></tr>
+      <tr><td>TF sounding<br>SR2SR variant（可選）</td><td>SR2SR Sounding Trigger</td><td>一個 non-AP STA 送 NDP，其餘 STA 與 AP 做量測</td><td>指定一個 Transmitter User Info 與一或多個 Receiver User Info；可選實作</td></tr>
+      <tr><td>Reporting</td><td>Reporting 類 Trigger（視 basic / threshold-based）</td><td>Sensing Measurement Report</td><td>Report Requested=1 才有；threshold-based 時只回報 CSI variation 達門檻者</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <h3>5.1 不能單獨存在的組合</h3>
+  <p>TB exchange 不得僅含 reporting phase、僅 NDPA sounding、僅 SR2SR TF sounding（responder 為 receiver），或僅 polling + reporting。</p>
+  <h3>5.2 Sensing Trigger frame 子類型（9.3.1.22.15，PDF p.39–46）</h3>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Subtype</th><th>名稱</th><th>用在哪個階段</th></tr></thead>
+    <tbody>
+      <tr><td>0</td><td>Sensing Polling</td><td>Polling</td></tr>
+      <tr><td>1</td><td>SR2SI Sounding</td><td>TF sounding（SR2SI）</td></tr>
+      <tr><td>2</td><td>Sensing Threshold-Based Reporting</td><td>Reporting（threshold-based）</td></tr>
+      <tr><td>3</td><td>Sensing Reporting</td><td>Reporting（basic）</td></tr>
+      <tr><td>4</td><td>SR2SR Sounding</td><td>TF sounding（SR2SR）</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="note"><b>Token 配對：</b>Polling 的 Token（poll counter，modulo 8）會與後續 NDPA / SR2SI / SR2SR 中的 Partial TSF 配對，讓 STA 知道這些 frame 屬於同一個 TB exchange。</div>
+</section>
+
+<!-- 6 -->
+<section id="nontb">
+  <h2><span class="num">6</span>Non-TB 量測交換</h2>
+  <p class="intro">適用於 non-AP STA 為 initiator、AP 為 responder 的 session：non-AP STA 只要媒體可用即可發起，頻率受 AP 的 Min Measurement Interval 限制（11.55.1.5.3，PDF p.158–161）。</p>
+  <figure>
+    <svg viewBox="0 0 760 170" role="img" aria-label="Non-TB sensing measurement exchange 時序示意">
+      <g font-size="12" text-anchor="middle">
+        <text x="8" y="62" font-weight="700" text-anchor="start">non-AP</text><text x="8" y="78" class="muted" font-size="10" text-anchor="start">（SI）</text>
+        <text x="8" y="132" font-weight="700" text-anchor="start">AP</text><text x="8" y="148" class="muted" font-size="10" text-anchor="start">（SR）</text>
+        <rect x="80" y="40" width="70" height="36" rx="5" fill="var(--c1)"/><text x="115" y="62" style="fill:#fff">NDPA</text>
+        <rect x="160" y="40" width="100" height="36" rx="5" fill="var(--c2)"/><text x="210" y="62" style="fill:#fff">SI2SR NDP</text>
+        <rect x="270" y="110" width="100" height="36" rx="5" fill="var(--c2)"/><text x="320" y="132" style="fill:#fff">SR2SI NDP</text>
+        <rect x="380" y="110" width="150" height="36" rx="5" fill="none" stroke="var(--c3)" stroke-width="2" stroke-dasharray="5 4"/><text x="455" y="132">Measurement Report</text>
+        <text x="650" y="132" class="muted" font-size="11">（Report Requested=1 時）</text>
+        <text x="380" y="18" class="muted" font-size="11">Measurement sounding phase　→　Reporting phase</text>
+      </g>
+    </svg>
+    <figcaption>圖 3：Non-TB exchange。各框之間為 SIFS；兩種 NDP 均為 HE 或 EHT Ranging NDP。</figcaption>
+  </figure>
+  <ul>
+    <li>必含 <b>measurement sounding phase</b>；僅當 Sensing Measurement Report Requested = 1 才有 reporting phase。</li>
+    <li>NDPA 的 STA Info 含 AID11=0（SR2SI / SI2SR 的 NSTS 與重複數）與 AID11=2045（SI2SR NDP TX Power、SR2SI NDP RSSI Target）。</li>
+    <li>只擔任 transmitter 或 receiver 時，可把另一方向的 NSTS 與 Rep 設 0 以縮短 NDP。</li>
+    <li>報告內容可對應「前一次」exchange 的量測；此時首次 exchange 需設 Invalid Indication = 1。</li>
+  </ul>
+</section>
+
+<!-- 7 -->
+<section id="sbp">
+  <h2><span class="num">7</span>SBP（Sensing By Proxy）</h2>
+  <p class="intro">SBP 讓 non-AP STA（SBP initiator）請 AP（SBP responder）代為執行 sensing，並把結果回報給自己（11.55.2，PDF p.165–173）。量測本身使用 TB sensing measurement exchange。</p>
+  <figure>
+    <svg viewBox="0 0 760 250" role="img" aria-label="SBP 流程示意">
+      <defs><marker id="sa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--c1)"/></marker>
+      <marker id="sb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--c3)"/></marker></defs>
+      <g font-size="12" text-anchor="middle">
+        <rect x="30" y="10" width="150" height="34" rx="6" fill="var(--c1)"/><text x="105" y="31" style="fill:#fff">STA（SBP initiator）</text>
+        <rect x="300" y="10" width="160" height="34" rx="6" fill="var(--c1)"/><text x="380" y="31" style="fill:#fff">AP（SBP responder）</text>
+        <rect x="580" y="10" width="150" height="34" rx="6" fill="var(--c3)"/><text x="655" y="31" style="fill:#fff">STA（sensing responder）</text>
+        <path d="M105 44 V240 M380 44 V240 M655 44 V240" stroke="var(--line)" stroke-width="2"/>
+        <path d="M105 78 H376" stroke="var(--c1)" stroke-width="2" marker-end="url(#sa)"/><text x="240" y="70">① SBP Request</text>
+        <path d="M376 106 H109" stroke="var(--c1)" stroke-width="2" marker-end="url(#sa)"/><text x="240" y="98">① SBP Response</text>
+        <path d="M384 150 H651" stroke="var(--c3)" stroke-width="2" marker-end="url(#sb)"/><path d="M651 164 H384" stroke="var(--c3)" stroke-width="2" marker-end="url(#sb)"/>
+        <text x="518" y="142">② Sensing session 與 TB 量測交換</text>
+        <path d="M376 210 H109" stroke="var(--c1)" stroke-width="2" marker-end="url(#sa)"/><text x="240" y="202">③ Sensing Measurement Report</text>
+      </g>
+    </svg>
+    <figcaption>圖 4：SBP 三步驟。SBP initiator 也可以同時是 sensing responder。</figcaption>
+  </figure>
+  <ul>
+    <li><b>Setup：</b>SBP Request（含 SBP Parameters 與 Sensing Measurement Parameters element）須在 aSBPSetupExpiry = 100 ms 內得到 SBP Response；Status Code 為 SUCCESS、REQUEST_DECLINED 或 REJECTED_WITH_SUGGESTED_SENSING_PARAMETERS。</li>
+    <li><b>參數：</b>可指定需要的 responder 數量（Number Of Sensing Responders）、是否強制（Mandatory Number Of Responders）、偏好的 responder 名單與角色 bitmap、是否要求 SR2SR sounding。</li>
+    <li><b>Reporting：</b>AP 以 Sensing Measurement Report frame 回報；initiator 須出現在 AP 指派的 availability window 內才收得到。</li>
+    <li><b>Termination：</b>initiator 可隨時以 SBP Termination frame 終止；終止後 AP 也會終止相關的 sensing session。</li>
+    <li>SBP procedure 的逾時時間由 SBP Procedure Expiry Exponent 決定，且應大於 Measurement Session Expiry Exponent。</li>
+  </ul>
+</section>
+
+<!-- 8 -->
+<section id="report">
+  <h2><span class="num">8</span>量測回報（CSI）</h2>
+  <p class="intro">Sensing receiver 收到 NDP 後算出 CSI，經縮放與量化放入 <b>Sensing Measurement Report</b> frame 回報（9.4.1.81，PDF p.54–70；11.55.1.5.4，PDF p.161–163）。</p>
+  <div class="grid g2">
+    <div class="card"><b>編碼</b>
+      <ul>
+        <li>對每組 (receive chain r, transmit chain t, subcarrier k) 的 CSI H(r,t,k)，實部與虛部各量化為 <b>8 bits</b> 的 2s complement 整數。</li>
+        <li>Receiver 選一個正的 12-bit scaling factor 避免溢位（值由實作決定），接收端解碼後乘回還原。</li>
+        <li><b>Ng</b>（subcarrier grouping）：Ng=4 或 8（≥5 chains 且 BW ≥160 MHz 為 8），或可選 Ng=16。</li>
+      </ul></div>
+    <div class="card"><b>Report Control field 內容</b>
+      <ul>
+        <li>BW、Nt、Nr、Ng、Rx_OP_Gain_Type、CSI Variation Feedback。</li>
+        <li>NDP 有 puncturing 時帶 Puncturing Pattern（16 bits）。</li>
+        <li>要求時帶 Reference Timestamp（取 sensing receiver TSF[31:0]）。</li>
+      </ul></div>
+  </div>
+  <h3>8.1 Basic 與 threshold-based reporting</h3>
+  <ul>
+    <li><b>CSI Variation Threshold</b>：0–10 表示 threshold-based reporting（以每 0.1 一級的 CSI variation 為門檻，只回報超過門檻者），15 表示 basic reporting（回報實際量測結果）。</li>
+    <li>Threshold-based 可讓 AP 先找出「CSI 變動夠大」的 responder，再決定要不要拉完整報告，降低回報的 airtime。</li>
+  </ul>
+  <h3>8.2 大報告的分段</h3>
+  <p>CSI 超過 aSensingReportSegmentSize（<b>3750 octets</b>）時，最多切成 <b>32 段</b>，各放入獨立的 Sensing Measurement Report Container；僅第一段含 Report Control，並以 Remaining Report Segments 遞減順序、於單一 A-MPDU 內傳送。</p>
+  <h3>8.3 Receiver 操作條件（11.55.1.5.5）</h3>
+  <p>Receiver 的增益設定等會影響 CSI 估計，因此可在報告中帶 <b>Rx_OP_Gain_Index</b>（0–255，越大代表對 CSI 估計的影響越大，0 為可忽略）與 Rx_OP_Gain_Type（0 不回報、1 operating point index、2 gain index）。Type 2 時 index 拆成 RF / Analog Gain（0–63）與 Digital Gain（1–3）。</p>
+  <h3>8.4 一致性規則</h3>
+  <ul>
+    <li>同一 session 內 receiver / transmitter 須使用相同順序的 RF chain 與天線；無效 chain 的 CSI 設 0。</li>
+    <li>Transmit chain 不可用則不得傳該 NDP；全部不可用時 session 隱含終止。</li>
+    <li>空間映射矩陣為 permutation（NSTS = NTX）或 permutation 加零矩陣（NSTS &lt; NTX），串流到天線埠的映射在 session 內不變。</li>
+  </ul>
+</section>
+
+<!-- 9 -->
+<section id="dmg">
+  <h2><span class="num">9</span>DMG sensing（60 GHz）</h2>
+  <p class="intro">802.11bf 同時定義 DMG STA（60 GHz）的 sensing 與 SBP，結構與 sub-7 GHz 類似，但以 <b>burst</b> 累積長時間量測，並有多種幾何配置（11.55.3、11.55.4，PDF p.173–202）。簡報未涵蓋此部分。</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>類型</th><th>說明</th></tr></thead>
+    <tbody>
+      <tr><td>Monostatic</td><td>Transmitter 與 receiver 為同一個 STA</td></tr>
+      <tr><td>Bistatic</td><td>Transmitter 與 receiver 為兩個不同 STA</td></tr>
+      <tr><td>Multistatic</td><td>一個 transmitter 與多個 receiver</td></tr>
+      <tr><td>Passive</td><td>接收並非專為 sensing 傳送的 PPDU（如 DMG Beacon），取得 beacon 方向與 AP/PCP 位置資訊</td></tr>
+      <tr><td>Coordinated monostatic</td><td>由 DMG AP/PCP 協調多個 monostatic responder</td></tr>
+      <tr><td>Coordinated bistatic</td><td>一個 initiator 協調多個 responder</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <ul>
+    <li>程序階層：procedure → <b>burst</b> → measurement exchange；一個 exchange 限於單一 TXOP 或 SP，含 initiation、sounding、reporting 三個 phase（sounding 必選）。</li>
+    <li>Burst 機制讓 Doppler 等需長時間累積的量測不受單一 TXOP 限制，initiator 可要求每個 exchange 回報，或每個 burst 回報一次。</li>
+    <li>相關新增 frame / element 包含 DMG Sensing Measurement Request / Response / Report / Termination、DMG SBP 系列，以及 DMG Sensing Report element（Image / Targets 兩種資料）。</li>
+  </ul>
+</section>
+
+<!-- 10 -->
+<section id="spec-bf">
+  <h2><span class="num">10</span>802.11bf 規格速查（WLAN Sensing）</h2>
+  <p class="intro">整理自 IEEE 802.11bf-2025 原文，共 <b id="bfCount">201</b> 個條文單位的繁體中文摘要（含 11.55 sensing 程序、sensing 相關 frame 與 element、DMG sensing 等）。可用關鍵字搜尋，或依章節篩選。</p>
+  <div class="spec-ctl">
+    <input class="search" id="bfq" type="search" placeholder="搜尋，例如 SBP、NDPA、CSI、Polling、Ng…" aria-label="搜尋 802.11bf 規格">
+    <select id="bfSel" aria-label="依章節篩選"></select>
+  </div>
+  <div class="spec-meta" id="bfMeta"></div>
+  <div id="bfList"></div>
+  <div class="note"><b>頁碼規則：</b>「p.」為規格書印刷頁碼，PDF 頁碼 = 印刷頁 + 1（原文 PDF：<code>80211bf-2025.pdf</code>）。摘要為學習輔助，條文細節與數值請以原文為準。</div>
+</section>
+
+<!-- 11 -->
+<section id="glossary">
+  <h2><span class="num">11</span>名詞表</h2>
+  <input class="search" id="gq" type="search" placeholder="搜尋名詞，例如 NDPA、SBP、USID…" aria-label="搜尋名詞">
+  <dl class="gloss" id="gloss">
+    <div><dt>SI / SR</dt><dd>Sensing initiator / responder：發起與回應 sensing procedure 的 STA。</dd></div>
+    <div><dt>Sensing Tx / Rx</dt><dd>Sensing transmitter / receiver：傳送量測用 PPDU 的 STA / 接收並取得量測的 STA。</dd></div>
+    <div><dt>NDP</dt><dd>Null Data Packet：不帶資料、僅供量測的封包。Sensing 用 HE / EHT Ranging NDP。</dd></div>
+    <div><dt>SI2SR / SR2SI / SR2SR</dt><dd>NDP 的方向：initiator → responder、responder → initiator、responder → 其他 responder。</dd></div>
+    <div><dt>NDPA</dt><dd>NDP Announcement：宣告後面接 NDP，Sensing 版本以第一個 STA Info（AID11=2045 且 B31=1）識別。</dd></div>
+    <div><dt>TB / non-TB</dt><dd>Trigger-Based（AP 發起，用 Trigger frame 協調）/ 非 trigger-based（non-AP 發起）。</dd></div>
+    <div><dt>SBP</dt><dd>Sensing By Proxy：non-AP STA 請 AP 代為執行 sensing。</dd></div>
+    <div><dt>CSI</dt><dd>Channel State Information：各 subcarrier、各 TX / RX chain 的通道估計，是 sensing 的原始量測。</dd></div>
+    <div><dt>Ng</dt><dd>Subcarrier grouping：回報 CSI 時每 Ng 個 subcarrier 取一個，可為 4、8、16。</dd></div>
+    <div><dt>Availability window</dt><dd>雙方約定可進行 sensing exchange 的時段，單位 10 TU，須為 Beacon Interval 的倍數。</dd></div>
+    <div><dt>AID / USID</dt><dd>已 association 的 STA 識別 / 未 association 的 sensing STA 識別（Unassociated STA ID）。</dd></div>
+    <div><dt>DMG</dt><dd>Directional Multi-Gigabit：60 GHz 頻段的 STA 類型。</dd></div>
+    <div><dt>PASN</dt><dd>Pre-Association Security Negotiation：未 association 前建立 PTKSA 的安全協商。</dd></div>
+  </dl>
+</section>
+
+<!-- 12 -->
+<section id="refs">
+  <h2><span class="num">12</span>參考資料</h2>
+  <div class="grid g2">
+    <div class="card"><b>一手來源</b>
+      <ul>
+        <li>IEEE 802.11bf-2025（專案內 <code>80211bf-2025.pdf</code>）</li>
+        <li>IEEE 802.11-2024 base standard（<code>80211-2024.pdf</code>）</li>
+        <li>作者簡報：<code>WS-0703-TimLin_SD7_11bf-R00.pptx</code>（2023/07/03，依 Draft D1.1）</li>
+      </ul></div>
+    <div class="card"><b>延伸閱讀（取自簡報參考頁）</b>
+      <ul>
+        <li><a href="https://arxiv.org/pdf/2207.04859.pdf" target="_blank" rel="noopener">An Overview on IEEE 802.11bf: WLAN Sensing（arXiv 2207.04859）</a></li>
+        <li><a href="https://en.wikipedia.org/wiki/WiFi_Sensing" target="_blank" rel="noopener">Wikipedia：WiFi Sensing</a></li>
+        <li>Wi-Fi Alliance：Introduction to IEEE 802.11bf – WLAN sensing（需 WFA 成員權限）</li>
+      </ul></div>
+  </div>
+</section>
+
+<footer>
+  整理自 IEEE 802.11bf-2025 原文與作者 2023 年介紹簡報，學習輔助用；條文細節與數值請以原文為準。最後更新：2026-11-22。
+</footer>
+</main>
+</div>
+<script src="spec-bf-data.js"></script>
+<script src="assets/spec-search.js"></script>
+<script>SpecSearch({data:window.SPEC_BF,p:'bf'});</script>
+<script src="assets/site.js"></script>
+</body>
+</html>
